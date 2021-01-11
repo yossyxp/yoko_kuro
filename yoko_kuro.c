@@ -7,17 +7,35 @@
 
 #define N ( 1024 ) // 配列の要素数
 #define alpha ( 2.0 / sqrt(3) )
-#define dt ( 0.0005 ) // 時間刻み
+#define dt ( 0.05 ) // 時間刻み
 #define eps ( 1.0e-2 ) // 辺の結合に用いるeps
-#define K ( 1000.0 ) // パラメータ
 
 //----------定数(ラプラス)----------//
 
-#define s ( 250 ) // 空間分割数(x軸)
-#define m ( 250 ) // 空間分割数(y軸)
-#define dx ( 0.16 ) // 空間刻み幅(x軸)
-#define dy ( 0.16 ) // 空間刻み幅(y軸)
+//#define s ( 250 ) // 空間分割数(x軸)
+//#define m ( 250 ) // 空間分割数(y軸)
+//#define dx ( 0.16 ) // 空間刻み幅(x軸)
+//#define dy ( 0.16 ) // 空間刻み幅(y軸)
 #define epsl ( 1.0e-15 ) // 場合分け回避に用いるeps
+
+//----------定数(結晶)----------//
+
+#define T ( 281.15 ) // 絶対温度[K]
+#define p_e ( 1.66e+3 ) // 平衡蒸気圧[N/m^2]
+#define v_c ( 3.25e-23 ) // 結晶相での水分子の体積[m^3]
+#define m ( 3.0e-23 ) // 水分子の質量[kg]
+#define k_B ( 1.38e-23 ) // ボルツマン定数[JK^-1]
+#define alpha_1 ( 0.1 ) // 凝縮定数
+#define E ( 40 ) // 拡散係数[m^2/s]
+//#define d ( 4.5e-8 ) // ステップの高さ[m]
+//#define x_s ( 400 * d ) // 吸着分子がステップ滞在中に表面拡散する平均距離[m]
+//#define f_0 ( 8.3e-16 ) // 界面において1分子あたりが占める表面積
+//#define kappa ( 2.0e-6 ) // ステップの単位長さあたりの自由エネルギー
+
+#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
+
+//#define sigma_infty ( 0.17 ) // 初期値
+#define sigma_infty ( 1.9 ) // 初期値
 
 //----------定数(連立)----------//
 
@@ -72,12 +90,13 @@ int main(void){
   double x1, x2; // 数値積分
   double dx_sim; // 数値積分の分割幅
   double xl, yl; // 空間全体の座標
-  double beta, tmp, amax; 
-  double **T; // 連立方程式の行列
-  double *p, *q; // 連立方程式の解と右辺
+  double gamma, tmp, amax; 
+  double **U; // 連立方程式の行列
+  double *p, *q; // 蒸気圧と連立方程式の右辺
   double A, c; // 一時的な入れ物
-  double *B, *d; // 一時的な入れ物
-  double **u; // 過飽和度
+  double **B, **d; // 一時的な入れ物
+  double *u; // 過飽和度
+  double beta;
 
   double r, v, w;
   
@@ -188,7 +207,7 @@ int main(void){
     
   }
   
-  if( ( T = malloc( N * sizeof(double *) ) ) == NULL ){
+  if( ( U = malloc( N * sizeof(double *) ) ) == NULL ){
     
     printf("メモリが確保できません\n");
     exit(1);
@@ -197,7 +216,7 @@ int main(void){
   
   for( i = 0; i <= N; i++ ){
     
-    T[i] = malloc( N * sizeof(double) );
+    U[i] = malloc( N * sizeof(double) );
     
   }
   
@@ -214,11 +233,17 @@ int main(void){
     exit(1);
     
   }
-  
+
   if( ( B = malloc( N * sizeof(double *) ) ) == NULL ){
     
     printf("メモリが確保できません\n");
     exit(1);
+    
+  }
+  
+  for( i = 0; i <= N; i++ ){
+    
+    B[i] = malloc( N * sizeof(double) );
     
   }
   
@@ -229,16 +254,16 @@ int main(void){
     
   }
   
-  if( ( u = malloc( s * sizeof(double *) ) ) == NULL ){
+  for( i = 0; i <= N; i++ ){
     
-    printf("メモリが確保できません\n");
-    exit(1);
+    d[i] = malloc( N * sizeof(double) );
     
   }
   
-  for( i = 0; i <= s; i++ ){
+  if( ( u = malloc( N * sizeof(double *) ) ) == NULL ){
     
-    u[i] = malloc( m * sizeof(double) );
+    printf("メモリが確保できません\n");
+    exit(1);
     
   }
   
@@ -270,7 +295,7 @@ int main(void){
   
   for( z = 0; z <= 0; z++ ){
     
-    sprintf(file, "./data1/snow%06d.dat", z);
+    sprintf(file, "./data/yoko_kuro%06d.dat", z);
     fp = fopen(file, "w");
     
     for( i = 0; i <= n; i++ ){
@@ -346,14 +371,9 @@ int main(void){
   
 
   //----------critical length----------//
-
-  v = -1.0 / 6.0;
   
-  r = ( l[1] * l[1] * log(l[1]) - ( ( 3 * l[1] * l[1] ) / 2.0 ) ) * v / ( 2 * M_PI * l[1] );
-  
-  w = -6 * ( ( ( l[1] / 3.0 ) * ( l[1] / 3.0 ) * log(( l[1] / 3.0 )) - ( ( 3 * ( l[1] / 3.0 ) * ( l[1] / 3.0 ) ) / 2.0 ) ) * v ) / ( 2 * M_PI ) + r;
-
-  lc = -16 / ( sqrt(3) * K * w );
+  lc = 1.0 / sigma_infty;
+  // lc = 4.0;
 
   printf("lc = %f\n", lc);
   
@@ -361,10 +381,9 @@ int main(void){
   
   t = 0.0;
   
-  for( z = 1; z <= 500000; z++ ){ //10000000
+  for( z = 1; z <= 50000000; z++ ){ //10000000
     
     t += dt;
-    
     
     //--------------------連立方程式-------------------//
     
@@ -376,82 +395,46 @@ int main(void){
 	
 	if( j == i ){
 	  
-	  T[i][j] = l[j] * l[j] * log(l[j]) - ( ( 3 * l[j] * l[j] ) / 2.0 );
+	  U[i][j] = 0.5 - ( ( k_B * T * beta_max ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
 	  
 	}
 	
 	else{
+
+	  B[i][j] = ( x[j - 1] - x[i - 1] ) * t2[i] - ( y[j - 1] - y[i - 1] ) * t1[i];
+	  d[i][j] = ( x[j - 1] - x[i - 1] ) * t1[i] + ( y[j - 1] - y[i - 1] ) * t2[i];
 	  
-	  dx_sim = l[i] / N;
-	  
-	  T[i][j] = dx_sim * ( gg(i,j,l,x,y,t1,t2,0) + gg(i,j,l,x,y,t1,t2,dx_sim) ) / 2.0;
-	  
-	  for( k = 1; k < N; k++ ){
-	    
-	    x1 = k * dx_sim;
-	    x2 = ( k + 1 ) * dx_sim;
-	    
-	    T[i][j] = T[i][j] + dx_sim * ( gg(i,j,l,x,y,t1,t2,x1) + gg(i,j,l,x,y,t1,t2,x2) ) / 2.0;
-	    
-	  }
+	  U[i][j] =
+	    - log( l[i] + d[i][j] + sqrt(( l[i] + d[i][j] ) * ( l[i] + d[i][j] ) + B[i][j] * B[i][j] ) + epsl * epsl ) - log( d[i][j] + sqrt( d[i][j] * d[i][j] + B[i][j] * B[i][j] ) + epsl * epsl ) / ( 2 * M_PI )
+	    + ( ( k_B * T * beta_max ) / ( E * p_e * v_c ) ) * ( ( l[i] + d[i][j] ) * log( sqrt( ( l[i] + d[i][j] ) * ( l[i] + d[i][j] ) + B[i][j] * B[i][j] + epsl * epsl ) ) - l[i] + fabs( B[i][j] ) * atan( ( l[i] + d[i][j] ) / sqrt( B[i][j] * B[i][j] + epsl * epsl ) ) - d[i][j] * log( sqrt( d[i][j] * d[i][j] + B[i][j] * B[i][j] + epsl * epsl ) ) - fabs( B[i][j] ) * atan( d[i][j] / sqrt( B[i][j] * B[i][j] + epsl * epsl ) ) ) / ( 2 * M_PI );
 	  
 	}
 	
       }
+	
+    }
+
+    for( i = 1; i <= n; i++ ){
+
+      q[i] = -2 * sigma_infty;
       
     }
     
     
     //----------ガウスの消去法----------//
     
-    //----------準備----------//
-    
-    for( i = 1; i <= n; i++ ){
-      
-      for( j = 1; j <= n; j++ ){
-	
-	T[i][j] = - T[i][j] / ( 2 * M_PI );
-	
-      }
-      
-    }
-    
-    for( i = 1; i <= n; i++ ){
-      
-      T[i][n + 1] = l[i];
-      
-    }
-    
-    for( j = 1; j <= n; j++ ){
-      
-      T[n + 1][j] = l[j];
-      
-    }
-    
-    T[n + 1][n + 1] = 0.0;
-    
-    
-    for( i = 1; i <= n; i++ ){
-      
-      q[i] = l[i] * kappa[i];
-      
-    }
-    
-    q[n + 1] = -K;
-    
-    
     //----------消去----------//
     
     for( k = 1; k <= n; k++ ){
       
-      amax = fabs(T[k][k]);
+      amax = fabs(U[k][k]);
       ip = k;
       
       for( i = k + 1; i <= n + 1; i++ ){
 	
-	if( fabs(T[i][k]) > amax ){
+	if( fabs(U[i][k]) > amax ){
 	  
-	  amax = fabs(T[i][k]);
+	  amax = fabs(U[i][k]);
 	  ip = i;
 	  
 	}
@@ -468,9 +451,9 @@ int main(void){
 	
 	for( j = k; j <= n + 1; j++ ){
 	  
-	  tmp = T[k][j];
-	  T[k][j] = T[ip][j];
-	  T[ip][j] = tmp;
+	  tmp = U[k][j];
+	  U[k][j] = U[ip][j];
+	  U[ip][j] = tmp;
 	  
 	}
 	
@@ -482,21 +465,21 @@ int main(void){
       
       for( i = k + 1; i <= n + 1; i++ ){
 	
-	beta = - T[i][k] / T[k][k];
+	gamma = - U[i][k] / U[k][k];
 	
 	for( j = k + 1; j <= n + 1; j++ ){
 	  
-	  T[i][j] = T[i][j] + beta * T[k][j];
+	  U[i][j] = U[i][j] + gamma * U[k][j];
 	  
 	}
 	
-	q[i] = q[i] + beta * q[k];
+	q[i] = q[i] + gamma * q[k];
 	
       }
       
     }
     
-    p[n + 1] = q[n + 1] / T[n + 1][n + 1];
+    u[n + 1] = q[n + 1] / U[n + 1][n + 1];
     
     for( k = n; k >= 1; k-- ){
       
@@ -504,83 +487,42 @@ int main(void){
       
       for( j = k + 1; j <= n + 1; j++ ){
 	
-	tmp = tmp - T[k][j] * p[j];
+	tmp = tmp - U[k][j] * u[j];
 	
       }
       
-      p[k] = tmp / T[k][k];
+      u[k] = tmp / U[k][k];
       
     }
-    
-    
-    //----------p_jとalphaからuを求める----------//
-    
-    for( i = 0; i <= s; i++ ){
-      
-      xl = i * dx - 20.0;
-      
-      for( j = 0; j <= m; j++ ){
-	
-	yl = j * dy - 20.0;
-	
-	A = ( x[0] - xl ) * t2[1] - ( y[0] - yl ) * t1[1];
-	c = ( x[0] - xl ) * t1[1] + ( y[0] - yl ) * t2[1];
-	
-	u[i][j] = ( ( l[1] + c ) * log( sqrt( ( l[1] + c ) * ( l[1] + c ) + A * A + epsl * epsl ) ) - l[1] + fabs( A ) * atan( ( l[1] + c ) / sqrt( A * A + epsl * epsl ) ) - c * log( sqrt( c * c + A * A + epsl * epsl ) ) - fabs( A ) * atan( c / sqrt( A * A + epsl * epsl ) ) ) * p[1];
-	
-	for( k = 2; k <= n; k++ ){
-	  
-	  B[k] = ( x[k - 1] - xl ) * t2[k] - ( y[k - 1] - yl ) * t1[k];
-	  d[k] = ( x[k - 1] - xl ) * t1[k] + ( y[k - 1] - yl ) * t2[k];
-	  
-	  u[i][j] = u[i][j] + ( ( l[k] + d[k] ) * log( sqrt( ( l[k] + d[k] ) * ( l[k] + d[k] ) + B[k] * B[k] + epsl * epsl ) ) - l[k] + fabs( B[k] ) * atan( ( l[k] + d[k] ) / sqrt( B[k] * B[k] + epsl * epsl ) ) - d[k] * log( sqrt( d[k] * d[k] + B[k] * B[k] + epsl * epsl ) ) - fabs( B[k] ) * atan( d[k] / sqrt( B[k] * B[k] + epsl * epsl ) ) ) * p[k];
-	  
-	}
-	
-      }
-      
-    }
-    
-    
-    for( i = 0; i <= s; i++ ){
-      
-      for( j = 0; j <= m; j++ ){
-	
-	u[i][j] = -( u[i][j] / ( 2 * M_PI ) ) + p[n + 1];
-	
-      }
-      
-    }
-    
     
     //----------出力(u)----------//
     
-    if( z % 2500 == 0 ){ // 50000
+    //if( z % 2500 == 0 ){ // 50000
       
-      sprintf(file2, "./data2/sim%06d.dat", z / 2500 );
+    //sprintf(file2, "./data2/sim%06d.dat", z / 2500 );
       //sprintf(file2, "./data2/sim%06d.dat", z );
-      fp2 = fopen(file2,"w");
+      //fp2 = fopen(file2,"w");
       
       
-      for( i = 0; i <= s; i++ ){
+      //for( i = 0; i <= s; i++ ){
 	
-	xl = dx * i - 20.0;
+    //xl = dx * i - 20.0;
 	
-	for( j = 0; j <= m; j++ ){ 
+    //for( j = 0; j <= m; j++ ){ 
 	  
-	  yl = dy * j - 20.0;
+    //yl = dy * j - 20.0;
 	  
-	  fprintf(fp2, "%f %f %f\n", xl, yl, u[i][j] / K);
+    //fprintf(fp2, "%f %f %f\n", xl, yl, u[i][j] / K);
 	  
-	}
+    //}
 	
-	fprintf(fp2, "\n");
+    //fprintf(fp2, "\n");
 	
-      }
+    //}
       
-      fclose(fp2);
+    //fclose(fp2);
       
-    }
+    //}
     
     
     //--------------------ODEの計算--------------------//
@@ -588,13 +530,13 @@ int main(void){
     // ルンゲクッタ
     for( i = 1; i <= n; i++ ){
       
-      k1 = dt * ff(i,p,t);
-      p[i] = p[i] + k1 / 2.0;
-      k2 = dt * ff(i,p,t + dt / 2);
-      p[i] = p[i] + k2 / 2.0;
-      k3 = dt * ff(i,p,t + dt / 2);
-      p[i] = p[i] + k3;
-      k4 = dt * ff(i,p,t + dt);
+      k1 = dt * ff(i,sigma,t);
+      sigma[i] = sigma[i] + k1 / 2.0;
+      k2 = dt * ff(i,sigma,t + dt / 2);
+      sigma[i] = p[i] + k2 / 2.0;
+      k3 = dt * ff(i,sigma,t + dt / 2);
+      sigma[i] = p[i] + k3;
+      k4 = dt * ff(i,sigma,t + dt);
       
       h[i] = h[i] + dt * ( k1 + 2 * k2 + 2 * k3 + k4 ) / 6.0;
       
@@ -610,9 +552,9 @@ int main(void){
     
     //----------出力(x,y)----------//
     
-    if( z % 2500 == 0 ){ // 50000
+    if( z % 250000 == 0 ){ // 50000
       
-      sprintf(file, "./data1/snow%06d.dat", z / 2500 );
+      sprintf(file, "./data/yoko_kuro%06d.dat", z / 250000 );
       //sprintf(file, "./data/snow%06d.dat", z );
       fp = fopen(file, "w");
       
@@ -1271,24 +1213,32 @@ int main(void){
 
   for( i = 0; i <= N; i++ ){
     
-    free((void *)T[i]);
+    free((void *)U[i]);
     
   }
   
-  free((void *)T);
+  free((void *)U);
   
   free(p);
   free(q);
-  free(B);
-  free(d);
   
-  for( i = 0; i <= s; i++ ){
+  for( i = 0; i <= N; i++ ){
     
-    free((void *)u[i]);
+    free((void *)B[i]);
     
   }
   
-  free((void *)u);
+  free((void *)B);
+  
+  for( i = 0; i <= N; i++ ){
+    
+    free((void *)d[i]);
+    
+  }
+  
+  free((void *)d);
+  
+  free(u);
   
   
   //----------return----------//
@@ -1463,12 +1413,13 @@ void new_length(int n, double *h, double *phi, double *l){
   
 }
 
-double ff( int i, double *p, double t ){
+double ff( int i, double *u, double t ){
   
-  return ( -p[i] );
+  return ( beta_max * u[i] );
   
 }
 
+/*
 double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a ){
 
   return ( (
@@ -1482,4 +1433,4 @@ double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2
 	    ) );
 
 }
-    
+*/
