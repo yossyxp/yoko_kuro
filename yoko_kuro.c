@@ -36,7 +36,7 @@
 #define beta_max ( 1.0 )
 
 //#define sigma_infty ( 17 ) // 初期値
-#define sigma_infty ( 0.9 ) // 初期値
+#define sigma_infty ( 1.9 ) // 初期値
 
 //----------定数(連立)----------//
 
