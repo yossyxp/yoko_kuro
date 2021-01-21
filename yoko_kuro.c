@@ -7,7 +7,7 @@
 
 #define N ( 1024 ) // 配列の要素数
 #define alpha ( 2.0 / sqrt(3) )
-#define dt ( 0.05 ) // 時間刻み
+#define dt ( 0.005 ) // 時間刻み
 #define eps ( 1.0e-2 ) // 辺の結合に用いるeps
 
 //----------定数(ラプラス)----------//
@@ -32,10 +32,11 @@
 //#define f_0 ( 8.3e-16 ) // 界面において1分子あたりが占める表面積
 //#define kappa ( 2.0e-6 ) // ステップの単位長さあたりの自由エネルギー
 
-#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
+//#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
+#define beta_max ( 1.0 )
 
-//#define sigma_infty ( 0.17 ) // 初期値
-#define sigma_infty ( 1.9 ) // 初期値
+//#define sigma_infty ( 17 ) // 初期値
+#define sigma_infty ( 0.9 ) // 初期値
 
 //----------定数(連立)----------//
 
@@ -54,7 +55,8 @@ void transition_number(int n, double *sigma, double *chi); // 遷移数
 void new_coordinate(int n, double *h, double *t1, double *t2, double *phi, double *x, double *y); // 新たな座標
 void new_length(int n, double *h, double *phi, double *l); // 新たな辺の長さ
 double ff( int i, double *p, double t ); // 高さ関数の発展方程式の右辺
-double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a );
+double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double *n1, double *n2, double a );
+double hh( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a );
 
 //--------------------main文--------------------//
 
@@ -372,46 +374,63 @@ int main(void){
 
   //----------critical length----------//
   
-  lc = 1.0 / sigma_infty;
-  // lc = 4.0;
+  lc = 2.3;
 
   printf("lc = %f\n", lc);
+  printf("beta_max = %f\n", beta_max);
   
   //--------------------全体を回す--------------------//
   
   t = 0.0;
   
-  for( z = 1; z <= 50000000; z++ ){ //10000000
+  for( z = 1; z <= 200000; z++ ){ //50000000
     
     t += dt;
     
     //--------------------連立方程式-------------------//
-    
-    //----------数値積分----------//
     
     for( i = 1; i <= n; i++ ){
       
       for( j = 1; j <= n; j++ ){
 	
 	if( j == i ){
-	  
+
 	  U[i][j] = 0.5 - ( ( k_B * T * beta_max ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
 	  
 	}
 	
 	else{
 
-	  B[i][j] = ( x[j - 1] - x[i - 1] ) * t2[i] - ( y[j - 1] - y[i - 1] ) * t1[i];
-	  d[i][j] = ( x[j - 1] - x[i - 1] ) * t1[i] + ( y[j - 1] - y[i - 1] ) * t2[i];
+	  //----------数値積分----------//
 	  
-	  U[i][j] =
-	    - log( l[i] + d[i][j] + sqrt(( l[i] + d[i][j] ) * ( l[i] + d[i][j] ) + B[i][j] * B[i][j] ) + epsl * epsl ) - log( d[i][j] + sqrt( d[i][j] * d[i][j] + B[i][j] * B[i][j] ) + epsl * epsl ) / ( 2 * M_PI )
-	    + ( ( k_B * T * beta_max ) / ( E * p_e * v_c ) ) * ( ( l[i] + d[i][j] ) * log( sqrt( ( l[i] + d[i][j] ) * ( l[i] + d[i][j] ) + B[i][j] * B[i][j] + epsl * epsl ) ) - l[i] + fabs( B[i][j] ) * atan( ( l[i] + d[i][j] ) / sqrt( B[i][j] * B[i][j] + epsl * epsl ) ) - d[i][j] * log( sqrt( d[i][j] * d[i][j] + B[i][j] * B[i][j] + epsl * epsl ) ) - fabs( B[i][j] ) * atan( d[i][j] / sqrt( B[i][j] * B[i][j] + epsl * epsl ) ) ) / ( 2 * M_PI );
+	  dx_sim = l[i] / N;
+	  
+	  U[i][j] = dx_sim * ( gg(i,j,l,x,y,t1,t2,n1,n2,0) + gg(i,j,l,x,y,t1,t2,n1,n2,dx_sim) ) / 2.0;
+	  
+	  for( k = 1; k < N; k++ ){
+	    
+	    x1 = k * dx_sim;
+	    x2 = ( k + 1 ) * dx_sim;
+	    
+	    U[i][j] = U[i][j] + dx_sim * ( gg(i,j,l,x,y,t1,t2,n1,n2,x1) + gg(i,j,l,x,y,t1,t2,n1,n2,x2) ) / 2.0;
+	    
+	  }
+
+	  U[i][j] = U[i][j] + dx_sim * ( hh(i,j,l,x,y,t1,t2,0) + hh(i,j,l,x,y,t1,t2,dx_sim) ) / 2.0;
+
+	  for( k = 1; k < N; k++ ){
+	    
+	    x1 = k * dx_sim;
+	    x2 = ( k + 1 ) * dx_sim;
+	    
+	    U[i][j] = U[i][j] + dx_sim * ( hh(i,j,l,x,y,t1,t2,x1) + hh(i,j,l,x,y,t1,t2,x2) ) / 2.0;
+	    
+	  }
 	  
 	}
 	
       }
-	
+      
     }
 
     for( i = 1; i <= n; i++ ){
@@ -425,12 +444,12 @@ int main(void){
     
     //----------消去----------//
     
-    for( k = 1; k <= n; k++ ){
+    for( k = 1; k <= n - 1; k++ ){
       
       amax = fabs(U[k][k]);
       ip = k;
       
-      for( i = k + 1; i <= n + 1; i++ ){
+      for( i = k + 1; i <= n; i++ ){
 	
 	if( fabs(U[i][k]) > amax ){
 	  
@@ -449,7 +468,7 @@ int main(void){
       
       if( ip != k ){
 	
-	for( j = k; j <= n + 1; j++ ){
+	for( j = k; j <= n; j++ ){
 	  
 	  tmp = U[k][j];
 	  U[k][j] = U[ip][j];
@@ -463,11 +482,11 @@ int main(void){
 	
       }
       
-      for( i = k + 1; i <= n + 1; i++ ){
+      for( i = k + 1; i <= n; i++ ){
 	
 	gamma = - U[i][k] / U[k][k];
 	
-	for( j = k + 1; j <= n + 1; j++ ){
+	for( j = k + 1; j <= n; j++ ){
 	  
 	  U[i][j] = U[i][j] + gamma * U[k][j];
 	  
@@ -479,13 +498,13 @@ int main(void){
       
     }
     
-    u[n + 1] = q[n + 1] / U[n + 1][n + 1];
+    u[n] = q[n] / U[n][n];
     
-    for( k = n; k >= 1; k-- ){
+    for( k = n - 1; k >= 1; k-- ){
       
       tmp = q[k];
       
-      for( j = k + 1; j <= n + 1; j++ ){
+      for( j = k + 1; j <= n; j++ ){
 	
 	tmp = tmp - U[k][j] * u[j];
 	
@@ -494,6 +513,15 @@ int main(void){
       u[k] = tmp / U[k][k];
       
     }
+    
+    
+    for( i = 1; i <= n; i++ ){
+
+      //u[i] = 1.0;
+      printf("u[%d] = %f\n", i, u[i]);
+
+    }
+    
     
     //----------出力(u)----------//
     
@@ -530,13 +558,13 @@ int main(void){
     // ルンゲクッタ
     for( i = 1; i <= n; i++ ){
       
-      k1 = dt * ff(i,sigma,t);
-      sigma[i] = sigma[i] + k1 / 2.0;
-      k2 = dt * ff(i,sigma,t + dt / 2);
-      sigma[i] = p[i] + k2 / 2.0;
-      k3 = dt * ff(i,sigma,t + dt / 2);
-      sigma[i] = p[i] + k3;
-      k4 = dt * ff(i,sigma,t + dt);
+      k1 = dt * ff(i,u,t);
+      u[i] = u[i] + k1 / 2.0;
+      k2 = dt * ff(i,u,t + dt / 2);
+      u[i] = u[i] + k2 / 2.0;
+      k3 = dt * ff(i,u,t + dt / 2);
+      u[i] = u[i] + k3;
+      k4 = dt * ff(i,u,t + dt);
       
       h[i] = h[i] + dt * ( k1 + 2 * k2 + 2 * k3 + k4 ) / 6.0;
       
@@ -552,9 +580,9 @@ int main(void){
     
     //----------出力(x,y)----------//
     
-    if( z % 250000 == 0 ){ // 50000
+    if( z % 1000 == 0 ){ // 250000
       
-      sprintf(file, "./data/yoko_kuro%06d.dat", z / 250000 );
+      sprintf(file, "./data/yoko_kuro%06d.dat", z / 1000 );
       //sprintf(file, "./data/snow%06d.dat", z );
       fp = fopen(file, "w");
       
@@ -1419,18 +1447,23 @@ double ff( int i, double *u, double t ){
   
 }
 
-/*
-double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a ){
 
-  return ( (
-     
-	    ( l[j] + ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) )
-	    * log( sqrt( ( l[j] + ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) ) * ( l[j] + ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) ) + ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) ) * ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) ) + epsl * epsl ) )
-	    - l[j]
-	    + fabs( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) ) * atan( ( l[j] + ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) ) / sqrt( ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) * ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) + epsl * epsl ) ) )
-	    - ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) * log( sqrt( ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) ) * ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) ) + ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) ) * ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) ) + epsl * epsl ) )
-	    - fabs( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) ) * atan( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t1[j] + ( y[j - 1] - y[i - 1] - a * t2[i] ) * t2[j] ) / sqrt( ( ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) * ( ( x[j - 1] - x[i - 1] - a * t1[i] ) * t2[j] - ( y[j - 1] - y[i - 1] - a * t2[i] ) * t1[j] ) + epsl * epsl ) ) )
-	    ) );
+double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double *n1, double *n2, double a ){
+
+  return (
+
+	  ( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * n1[j] + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * n2[j] ) / ( 2 * M_PI * ( sqrt( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl ) ) )
+	  
+	  );
 
 }
-*/
+
+double hh( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a ){
+
+  return (
+
+	  ( ( k_B * T * beta_max ) / ( E * p_e * v_c ) ) * log( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl ) / ( 2 * M_PI )
+	  
+	  );
+
+}

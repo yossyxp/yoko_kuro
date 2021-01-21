@@ -14,5 +14,5 @@ set isosamples 1000
 outfile = "yoko_kuro.pdf"
 #outfile = "yoko_kuro.png"
 set output outfile
-plot for[i=0:200] sprintf("yoko_kuro%06d.dat", i) using 1:2 with lines lc "skyblue" lw 0.5	
+plot for[i=0:182] sprintf("yoko_kuro%06d.dat", i) using 1:2 with lines lc "skyblue" lw 0.5	
 #plot for[i=0:123] sprintf("yoko_kuro%06d.dat", i) using 1:2 with filledcurves lc "white" lw 3

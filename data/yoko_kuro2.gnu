@@ -11,9 +11,9 @@ set style fill border 6
 set xrange[-20:20]
 set yrange[-20:20]
 set isosamples 1000
-do for [i=0:200]{
-outfile = sprintf("snow2%06d.png", i)
+do for [i=0:60]{
+outfile = sprintf("yoko_kuro2%06d.png", i)
 set output outfile
-plot for[j=0:i] sprintf("snow%06d.dat", j) using 1:2 with lines lc "skyblue" lw 0.5
-#plot sprintf("snow%06d.dat", i) using 1:2 with filledcurves lc "white" linewidth 3
+#plot for[j=0:i] sprintf("yoko_kuro%06d.dat", j) using 1:2 with lines lc "skyblue" lw 0.5
+plot sprintf("yoko_kuro%06d.dat", i) using 1:2 with filledcurves lc "white" linewidth 3
 }
