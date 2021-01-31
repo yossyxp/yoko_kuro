@@ -27,16 +27,16 @@
 #define k_B ( 1.38e-23 ) // ボルツマン定数[JK^-1]
 #define alpha_1 ( 0.1 ) // 凝縮定数
 #define E ( 40 ) // 拡散係数[m^2/s]
-//#define d ( 4.5e-8 ) // ステップの高さ[m]
-//#define x_s ( 400 * d ) // 吸着分子がステップ滞在中に表面拡散する平均距離[m]
-//#define f_0 ( 8.3e-16 ) // 界面において1分子あたりが占める表面積
-//#define kappa ( 2.0e-6 ) // ステップの単位長さあたりの自由エネルギー
+#define e ( 4.5e-8 ) // ステップの高さ[m]
+#define x_s ( 400 * e ) // 吸着分子がステップ滞在中に表面拡散する平均距離[m]
+#define f_0 ( 8.3e-16 ) // 界面において1分子あたりが占める表面積
+#define energy ( 2.0e-6 ) // ステップの単位長さあたりの自由エネルギー
 
-//#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
-#define beta_max ( 1.0 )
+#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
+#define sigma_star ( 9.5 * f_0 * energy / ( k_B * T * x_s ) )
 
 //#define sigma_infty ( 17 ) // 初期値
-#define sigma_infty ( 10.9 ) // 初期値
+#define sigma_infty ( 6.0 ) // 初期値
 
 //----------定数(連立)----------//
 
@@ -54,9 +54,10 @@ void transition_number_pre(int n, double *n1, double *n2, double *sigma); // 法
 void transition_number(int n, double *sigma, double *chi); // 遷移数
 void new_coordinate(int n, double *h, double *t1, double *t2, double *phi, double *x, double *y); // 新たな座標
 void new_length(int n, double *h, double *phi, double *l); // 新たな辺の長さ
-double ff( int i, double *p, double t ); // 高さ関数の発展方程式の右辺
+double ff( int i, double* beta, double *u, double t ); // 高さ関数の発展方程式の右辺
 double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double *n1, double *n2, double a );
 double hh( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a );
+double ii( int j, double *l, double *x, double *y, double a, double R, double r_c);
 
 //--------------------main文--------------------//
 
@@ -91,16 +92,22 @@ int main(void){
   // uについての計算
   double x1, x2; // 数値積分
   double dx_sim; // 数値積分の分割幅
+  double dx_pi; // 数値積分の分割幅
   double xl, yl; // 空間全体の座標
   double gamma, tmp, amax; 
   double **U; // 連立方程式の行列
   double *p, *q; // 蒸気圧と連立方程式の右辺
-  double A, c; // 一時的な入れ物
+  double *A; // 面積の要素
+  double Area = 0.0;
+  double R; // 大きい半径
+  double r_c; // 結晶の平均半径
   double **B, **d; // 一時的な入れ物
   double *u; // 過飽和度
-  double beta;
+  double *beta;
 
   double r, v, w;
+
+  double *Q;
   
   // file出力
   char file[5000];
@@ -236,6 +243,13 @@ int main(void){
     
   }
 
+  if( ( A = malloc( N * sizeof(double *) ) ) == NULL ){
+    
+    printf("メモリが確保できません\n");
+    exit(1);
+    
+  }
+
   if( ( B = malloc( N * sizeof(double *) ) ) == NULL ){
     
     printf("メモリが確保できません\n");
@@ -269,6 +283,19 @@ int main(void){
     
   }
   
+  if( ( Q = malloc( N * sizeof(double *) ) ) == NULL ){
+    
+    printf("メモリが確保できません\n");
+    exit(1);
+    
+  }
+
+  if( ( beta = malloc( N * sizeof(double *) ) ) == NULL ){
+    
+    printf("メモリが確保できません\n");
+    exit(1);
+    
+  }
   
   //----------初期値(正六角形)---------//
   
@@ -374,7 +401,7 @@ int main(void){
 
   //----------critical length----------//
   
-  lc = 2.3;
+  lc =5.3;
 
   printf("lc = %f\n", lc);
   printf("beta_max = %f\n", beta_max);
@@ -386,6 +413,31 @@ int main(void){
   for( z = 1; z <= 200000; z++ ){ //50000000
     
     t += dt;
+
+    //--------------------面積と半径--------------------//
+
+    for( i = 1; i <= n; i++ ){
+      
+      A[i] = l[i] * h[i] / 2.0;
+      Area = Area + A[i];
+
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
+
+	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	
+      }
+
+      else{
+
+	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e; // ついでにbetaの計算
+
+      }
+      
+    }
+
+    r_c = sqrt(Area / M_PI);
+
+    R = 6.5 * r_c;
     
     //--------------------連立方程式-------------------//
     
@@ -433,9 +485,29 @@ int main(void){
       
     }
 
+    /*
     for( i = 1; i <= n; i++ ){
 
       q[i] = -2 * sigma_infty;
+      
+    }
+    */
+
+    
+    for( j = 1; j <= n; j++ ){
+      
+      dx_pi = 2 * M_PI / N;
+      
+      q[j] = dx_pi * ( ii(j,l,x,y,0,R,r_c) + ii(j,l,x,y,dx_pi,R,r_c) ) / 2.0;
+      
+      for( k = 1; k < N; k++ ){
+	
+	x1 = k * dx_pi;
+	x2 = ( k + 1 ) * dx_pi;
+	
+	q[j] = q[j] + dx_pi * ( ii(j,l,x,y,x1,R,r_c) + ii(j,l,x,y,x2,R,r_c) ) / 2.0;
+	
+      }
       
     }
     
@@ -558,13 +630,16 @@ int main(void){
     // ルンゲクッタ
     for( i = 1; i <= n; i++ ){
       
-      k1 = dt * ff(i,u,t);
+      k1 = dt * ff(i,beta,u,t);
+      beta[i] = beta[i] + k1 / 2.0;
       u[i] = u[i] + k1 / 2.0;
-      k2 = dt * ff(i,u,t + dt / 2);
+      k2 = dt * ff(i,beta,u,t + dt / 2);
+      beta[i] = beta[i] + k2 / 2.0;
       u[i] = u[i] + k2 / 2.0;
-      k3 = dt * ff(i,u,t + dt / 2);
+      k3 = dt * ff(i,beta,u,t + dt / 2);
+      beta[i] = beta[i] + k3;
       u[i] = u[i] + k3;
-      k4 = dt * ff(i,u,t + dt);
+      k4 = dt * ff(i,beta,u,t + dt);
       
       h[i] = h[i] + dt * ( k1 + 2 * k2 + 2 * k3 + k4 ) / 6.0;
       
@@ -1249,6 +1324,7 @@ int main(void){
   
   free(p);
   free(q);
+  free(A);
   
   for( i = 0; i <= N; i++ ){
     
@@ -1267,7 +1343,10 @@ int main(void){
   free((void *)d);
   
   free(u);
-  
+
+  free(Q);
+
+  free(beta);
   
   //----------return----------//
   
@@ -1441,9 +1520,9 @@ void new_length(int n, double *h, double *phi, double *l){
   
 }
 
-double ff( int i, double *u, double t ){
+double ff( int i, double *beta, double *u, double t ){
   
-  return ( beta_max * u[i] );
+  return ( beta[i] * u[i] );
   
 }
 
@@ -1452,7 +1531,7 @@ double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2
 
   return (
 
-	  ( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * n1[j] + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * n2[j] ) / ( 2 * M_PI * ( sqrt( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl ) ) )
+	  ( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * n1[i] + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * n2[i] ) / ( 2 * M_PI * ( sqrt( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl ) ) )
 	  
 	  );
 
@@ -1462,7 +1541,18 @@ double hh( int i, int j, double *l, double *x, double *y, double *t1, double *t2
 
   return (
 
-	  ( ( k_B * T * beta_max ) / ( E * p_e * v_c ) ) * log( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl ) / ( 2 * M_PI )
+	  ( ( k_B * T * beta_max ) / ( 2 * M_PI * E * p_e * v_c ) ) * log( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl )
+	  
+	  );
+
+}
+
+double ii( int j, double *l, double *x, double *y, double a, double R, double r_c){
+
+  return (
+
+	  ( -( log( sqrt( ( x[j - 1] - R * cos(a) ) * ( x[j - 1] - R * cos(a) ) + ( y[j - 1] - R * sin(a) ) * ( y[j - 1] - R * sin(a) ) ) + epsl * epsl ) / ( 2 * M_PI * R * log(R / r_c) ) )
+	  + ( ( x[j - 1] * cos(a) + y[j - 1] * sin(a) - R ) / ( 2 * M_PI * ( x[j - 1] - R * cos(a) ) * ( x[j - 1] - R * cos(a) ) + ( y[j - 1] - R * sin(a) ) * ( y[j - 1] - R * sin(a) ) ) ) ) * R * sigma_infty
 	  
 	  );
 
