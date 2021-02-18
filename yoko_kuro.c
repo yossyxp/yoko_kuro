@@ -1,22 +1,14 @@
 
 #include<stdio.h>
-#include<math.h>
 #include<stdlib.h>
+#include<math.h>
 
 //--------------------定数--------------------//
 
-#define N ( 1024 ) // 配列の要素数
-#define alpha ( 2.0 / sqrt(3) )
-#define dt ( 0.005 ) // 時間刻み
-#define eps ( 1.0e-2 ) // 辺の結合に用いるeps
-
-//----------定数(ラプラス)----------//
-
-//#define s ( 250 ) // 空間分割数(x軸)
-//#define m ( 250 ) // 空間分割数(y軸)
-//#define dx ( 0.16 ) // 空間刻み幅(x軸)
-//#define dy ( 0.16 ) // 空間刻み幅(y軸)
-#define epsl ( 1.0e-15 ) // 場合分け回避に用いるeps
+#define N ( 300 )
+#define TMAX ( 0.4 )
+#define dt ( 0.1 / ( N * N ) )
+#define RANGE_CHECK(x, xmin, xmax) ( x = ( x < xmin ? xmin : ( x < xmax ?  x : xmax)));
 
 //----------定数(結晶)----------//
 
@@ -36,635 +28,93 @@
 #define sigma_star ( 9.5 * f_0 * energy / ( k_B * T * x_s ) )
 
 //#define sigma_infty ( 17 ) // 初期値
-#define sigma_infty ( 6.0 ) // 初期値
+#define sigma_infty ( 0.035 ) // 初期値
+#define delta_beta ( 0.4 )
 
 //----------定数(連立)----------//
 
+#define epsl ( 1.0e-15 ) // 場合分け回避に用いるeps
 #define eps_sim ( 1.0e-40 )
 
-//--------------------関数宣言--------------------//
+//--------------------関数--------------------//
 
-void connect(int n, double *a); // 閉曲線の繋ぎ
-void normal(int n, double *t1, double *t2, double *n1, double *n2); // 法線ベクトル
-void height(int n, double *x, double *y, double *n1, double *n2, double *h); // 高さ関数
-void tangent_angle_pre(int n, double *t1, double *t2, double *D); // 接線ベクトルの行列式の符号
-void tangent_angle(int n, double *t1, double *t2, double *D, double *nu); // 接線角度
-void outside_angle(int n, double *nu, double *phi); // 外角
-void transition_number_pre(int n, double *n1, double *n2, double *sigma); // 法線ベクトルの行列式の符号
-void transition_number(int n, double *sigma, double *chi); // 遷移数
-void new_coordinate(int n, double *h, double *t1, double *t2, double *phi, double *x, double *y); // 新たな座標
-void new_length(int n, double *h, double *phi, double *l); // 新たな辺の長さ
-double ff( int i, double* beta, double *u, double t ); // 高さ関数の発展方程式の右辺
-double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double *n1, double *n2, double a );
-double hh( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a );
-double ii( int j, double *l, double *x, double *y, double a, double R, double r_c);
+double* make_vector(int n); // 領域の確保(ベクトル)
+double** make_matrix(int ROW, int COL); // 領域の確保(行列)
+void connect(double *x); // 閉曲線のつなぎ
+void connect_double(double* x, double *y); // つなぎ2個
+double ip(double x1, double x2, double y1, double y2); // 内積
+double DIST(double x1, double x2, double y1, double y2); // |y - x|
+double DET(double x1, double x2, double y1, double y2); // 行列式
+void supersaturation(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *nu, double A, double r_c, double R, double *beta, double **U, double *q, double *u);
+double gg( int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double a );
+double hh( int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double a, double *beta );
+double ii( int j, double *l, double *x1, double *x2, double a, double R, double r_c);
+void runge_qutta(double t, double *X1, double *X2); // ルンゲクッタ
+void F(double t, double *x1, double *x2, double *F1, double *F2);
+void ODE_pre(double t, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *V, double *W); // x --> T,N,V,W
+void initial_condition(double *x1, double *x2); // 初期条件
+void quantities(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *phi, double *kappa); //x --> t,n,T,N,phi,kappa
+void measure(double t, double *x1, double *x2, double *L, double *A); // x,l --> L,A
+double omega(int n); // 緩和項
+void velocity(double t, double *x1, double *x2, double *n1, double *n2, double *l, double *phi, double *kappa, double L, double A, double *V, double *W); // x,n,l,t,phi,kappa,L --> V,W
+void normal_speed(double t, double *kappa, double *phi, double *beta, double *u, double *v, double *V);
+void tangent_speed(double t, double *l, double *phi, double *kappa, double *v, double *V, double L, double *W); // l,phi,kappa,v,V,L --> W
 
-//--------------------main文--------------------//
+//--------------------main--------------------//
 
 int main(void){
-  
-  
-  //----------変数----------//
-  
-  // for文等に使う
-  int i, j, k, n, z, ip;
-  double t = 0.0;
-  
-  // 許容多角形
-  double *x, *y; // 曲線上の点
-  double *l; // 辺の長さ
-  double l_max; // 辺の最大値
-  double lc = 10.0; // critical length
-  double *t1, *t2; // 接線ベクトル
-  double *n1, *n2; // 法線ベクトル
-  double *h; // 高さ関数
-  double *nu; // 接戦角度
-  double *phi; // 外角
-  double *D; // 接線ベクトルの行列式の符号
-  double *sigma; // 法線ベクトルの行列式の符号
-  double *chi; // 遷移数
-  double *kappa; // 曲率
-  double k1, k2, k3, k4; // ルンゲクッタ
-  double x_temp, y_temp; // 2分割する辺の真ん中の座標
-  double x_temp1, y_temp1; // 3分割する辺の1:2の座標
-  double x_temp2, y_temp2; // 3分割する辺の2:1の座標
-  
-  // uについての計算
-  double x1, x2; // 数値積分
-  double dx_sim; // 数値積分の分割幅
-  double dx_pi; // 数値積分の分割幅
-  double xl, yl; // 空間全体の座標
-  double gamma, tmp, amax; 
-  double **U; // 連立方程式の行列
-  double *p, *q; // 蒸気圧と連立方程式の右辺
-  double *A; // 面積の要素
-  double Area = 0.0;
-  double R; // 大きい半径
-  double r_c; // 結晶の平均半径
-  double **B, **d; // 一時的な入れ物
-  double *u; // 過飽和度
-  double *beta;
 
-  double r, v, w;
-
-  double *Q;
+  //-----------変数----------//
   
-  // file出力
+  int i,z;
+  double t;
+  double *X1,*X2;
+  X1 = make_vector(N + 2);
+  X2 = make_vector(N + 2);
+  double L,A;
+
   char file[5000];
-  char file2[5000];
   FILE *fp;
-  FILE *fp2;
-  
-  
-  //--------------------動的変数の確保--------------------//
-  
-  if( ( x = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( y = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( l = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( t1 = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( t2 = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( n1 = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( n2 = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( h = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( nu = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( phi = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( D = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( sigma = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( chi = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( kappa = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( U = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  for( i = 0; i <= N; i++ ){
-    
-    U[i] = malloc( N * sizeof(double) );
-    
-  }
-  
-  if( ( p = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( q = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
 
-  if( ( A = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-
-  if( ( B = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  for( i = 0; i <= N; i++ ){
-    
-    B[i] = malloc( N * sizeof(double) );
-    
-  }
-  
-  if( ( d = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  for( i = 0; i <= N; i++ ){
-    
-    d[i] = malloc( N * sizeof(double) );
-    
-  }
-  
-  if( ( u = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  if( ( Q = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-
-  if( ( beta = malloc( N * sizeof(double *) ) ) == NULL ){
-    
-    printf("メモリが確保できません\n");
-    exit(1);
-    
-  }
-  
-  //----------初期値(正六角形)---------//
-  
-  n = 6;
-  
-  x[0] = sqrt(3) / 2.0;
-  x[1] = 0.0;
-  x[2] = -sqrt(3) / 2.0;
-  x[3] = -sqrt(3) / 2.0;
-  x[4] = 0.0;
-  x[5] = sqrt(3) / 2.0;
-  x[n] = x[0];
-  x[n + 1] = x[1];
-  
-  y[0] = 1.0 / 2.0;
-  y[1] = 1.0;
-  y[2] = 1.0 / 2.0;
-  y[3] = -1.0 / 2.0;
-  y[4] = -1.0;
-  y[5] = -1.0 / 2.0;
-  y[n] = y[0];
-  y[n + 1] = y[1];
-  
-  
-  //----------初期値の出力-----------//
-  
-  for( z = 0; z <= 0; z++ ){
-    
-    sprintf(file, "./data/yoko_kuro%06d.dat", z);
-    fp = fopen(file, "w");
-    
-    for( i = 0; i <= n; i++ ){
-      
-      //printf("%f %f\n", x[i], y[i]);
-      fprintf(fp, "%f %f %f\n", x[i], y[i], 0.0);
-      
-    }
-    
-    fclose(fp);
-    
-    printf("t = %d\n", z);
-    
-  }
-  
-  
-  //----------準備----------//
-  
-  // 辺の長さ
-  for( i = 1; i <= n; i++ ){
-    
-    l[i] = sqrt( ( x[i] - x[i - 1] ) * ( x[i] - x[i - 1] ) + ( y[i] - y[i - 1] ) * ( y[i] - y[i - 1] ) );
-    
-  }
-  connect(n,l);
-  
-  // 接線ベクトル
-  for( i = 1; i <= n; i++ ){
-    
-    t1[i] = ( x[i] - x[i - 1] ) / l[i];
-    t2[i] = ( y[i] - y[i - 1] ) / l[i];
-    
-  }
-  connect(n,t1);
-  connect(n,t2);
-  
-  // 外向き法線ベクトル
-  normal(n,t1,t2,n1,n2);
-  connect(n,n1);
-  connect(n,n2);
-  
-  // 高さ関数
-  height(n,x,y,n1,n2,h);
-  connect(n,h);
-  
-  //接線角度の準備
-  tangent_angle_pre(n,t1,t2,D);
-  connect(n,D);
-  
-  // 接線角度
-  tangent_angle(n,t1,t2,D,nu);
-  connect(n,nu);
-  
-  // 外角
-  outside_angle(n,nu,phi);
-  connect(n,phi);
-  
-  //遷移数の準備
-  transition_number_pre(n,n1,n2,sigma);
-  connect(n,sigma);
-  
-  //遷移数
-  transition_number(n,sigma,chi);
-  connect(n,chi);
-  
-  // 曲率
-  for( i = 1; i <= n; i++ ){
-    
-    kappa[i] = alpha * chi[i] / l[i];
-    
-  }
-  connect(n,kappa);
-  
-
-  //----------critical length----------//
-  
-  lc =5.3;
-
-  printf("lc = %f\n", lc);
-  printf("beta_max = %f\n", beta_max);
-  
-  //--------------------全体を回す--------------------//
-  
   t = 0.0;
+  z = 0;
+
+  //----------初期条件----------//
   
-  for( z = 1; z <= 200000; z++ ){ //50000000
+  initial_condition(X1,X2);
+  
+  sprintf(file, "./data/yoko_kuro%06d.dat", z);
+  fp = fopen(file, "w");
+  
+  for( i = 0; i <= N; i++ ){
     
-    t += dt;
+    //printf("%f %f\n", x[i], y[i]);
+    fprintf(fp, "%f %f %f\n", X1[i], X2[i], 0.0);
+    
+  }
+  
+  fclose(fp);
+  
+  printf("z = %d\n", z);
 
-    //--------------------面積と半径--------------------//
-
-    for( i = 1; i <= n; i++ ){
-      
-      A[i] = l[i] * h[i] / 2.0;
-      Area = Area + A[i];
-
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
-
-	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
-	
-      }
-
-      else{
-
-	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e; // ついでにbetaの計算
-
-      }
-      
-    }
-
-    r_c = sqrt(Area / M_PI);
-
-    R = 6.5 * r_c;
+  
+  //--------------------回そう--------------------//
+  
+  while(t < TMAX){
     
-    //--------------------連立方程式-------------------//
+    runge_qutta(t,X1,X2);
     
-    for( i = 1; i <= n; i++ ){
-      
-      for( j = 1; j <= n; j++ ){
-	
-	if( j == i ){
-
-	  U[i][j] = 0.5 - ( ( k_B * T * beta_max ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
-	  
-	}
-	
-	else{
-
-	  //----------数値積分----------//
-	  
-	  dx_sim = l[i] / N;
-	  
-	  U[i][j] = dx_sim * ( gg(i,j,l,x,y,t1,t2,n1,n2,0) + gg(i,j,l,x,y,t1,t2,n1,n2,dx_sim) ) / 2.0;
-	  
-	  for( k = 1; k < N; k++ ){
-	    
-	    x1 = k * dx_sim;
-	    x2 = ( k + 1 ) * dx_sim;
-	    
-	    U[i][j] = U[i][j] + dx_sim * ( gg(i,j,l,x,y,t1,t2,n1,n2,x1) + gg(i,j,l,x,y,t1,t2,n1,n2,x2) ) / 2.0;
-	    
-	  }
-
-	  U[i][j] = U[i][j] + dx_sim * ( hh(i,j,l,x,y,t1,t2,0) + hh(i,j,l,x,y,t1,t2,dx_sim) ) / 2.0;
-
-	  for( k = 1; k < N; k++ ){
-	    
-	    x1 = k * dx_sim;
-	    x2 = ( k + 1 ) * dx_sim;
-	    
-	    U[i][j] = U[i][j] + dx_sim * ( hh(i,j,l,x,y,t1,t2,x1) + hh(i,j,l,x,y,t1,t2,x2) ) / 2.0;
-	    
-	  }
-	  
-	}
-	
-      }
-      
-    }
-
-    /*
-    for( i = 1; i <= n; i++ ){
-
-      q[i] = -2 * sigma_infty;
-      
-    }
-    */
-
-    /*
-    for( j = 1; j <= n; j++ ){
-      
-      dx_pi = 2 * M_PI / N;
-      
-      q[j] = dx_pi * ( ii(j,l,x,y,0,R,r_c) + ii(j,l,x,y,dx_pi,R,r_c) ) / 2.0;
-      
-      for( k = 1; k < N; k++ ){
-	
-	x1 = k * dx_pi;
-	x2 = ( k + 1 ) * dx_pi;
-	
-	q[j] = q[j] + dx_pi * ( ii(j,l,x,y,x1,R,r_c) + ii(j,l,x,y,x2,R,r_c) ) / 2.0;
-	
-      }
-      
-    }
-    */
+    z++;
+    t = z * dt;
     
-    //----------ガウスの消去法----------//
-    
-    //----------消去----------//
-    
-    for( k = 1; k <= n - 1; k++ ){
+    if(z % 100 == 0){
       
-      amax = fabs(U[k][k]);
-      ip = k;
-      
-      for( i = k + 1; i <= n; i++ ){
-	
-	if( fabs(U[i][k]) > amax ){
-	  
-	  amax = fabs(U[i][k]);
-	  ip = i;
-	  
-	}
-	
-      }
-      
-      if( amax < eps_sim ){
-	
-	printf("入力した行列は正則ではない\n");
-	
-      }
-      
-      if( ip != k ){
-	
-	for( j = k; j <= n; j++ ){
-	  
-	  tmp = U[k][j];
-	  U[k][j] = U[ip][j];
-	  U[ip][j] = tmp;
-	  
-	}
-	
-	tmp = q[k];
-	q[k] = q[ip];
-	q[ip] = tmp;
-	
-      }
-      
-      for( i = k + 1; i <= n; i++ ){
-	
-	gamma = - U[i][k] / U[k][k];
-	
-	for( j = k + 1; j <= n; j++ ){
-	  
-	  U[i][j] = U[i][j] + gamma * U[k][j];
-	  
-	}
-	
-	q[i] = q[i] + gamma * q[k];
-	
-      }
-      
-    }
-    
-    u[n] = q[n] / U[n][n];
-    
-    for( k = n - 1; k >= 1; k-- ){
-      
-      tmp = q[k];
-      
-      for( j = k + 1; j <= n; j++ ){
-	
-	tmp = tmp - U[k][j] * u[j];
-	
-      }
-      
-      u[k] = tmp / U[k][k];
-      
-    }
-    
-    
-    for( i = 1; i <= n; i++ ){
-
-      //u[i] = 1.0;
-      printf("u[%d] = %f\n", i, u[i]);
-
-    }
-    
-    
-    //----------出力(u)----------//
-    
-    //if( z % 2500 == 0 ){ // 50000
-      
-    //sprintf(file2, "./data2/sim%06d.dat", z / 2500 );
-      //sprintf(file2, "./data2/sim%06d.dat", z );
-      //fp2 = fopen(file2,"w");
-      
-      
-      //for( i = 0; i <= s; i++ ){
-	
-    //xl = dx * i - 20.0;
-	
-    //for( j = 0; j <= m; j++ ){ 
-	  
-    //yl = dy * j - 20.0;
-	  
-    //fprintf(fp2, "%f %f %f\n", xl, yl, u[i][j] / K);
-	  
-    //}
-	
-    //fprintf(fp2, "\n");
-	
-    //}
-      
-    //fclose(fp2);
-      
-    //}
-    
-    
-    //--------------------ODEの計算--------------------//
-    
-    // ルンゲクッタ
-    for( i = 1; i <= n; i++ ){
-      
-      k1 = dt * ff(i,beta,u,t);
-      beta[i] = beta[i] + k1 / 2.0;
-      u[i] = u[i] + k1 / 2.0;
-      k2 = dt * ff(i,beta,u,t + dt / 2);
-      beta[i] = beta[i] + k2 / 2.0;
-      u[i] = u[i] + k2 / 2.0;
-      k3 = dt * ff(i,beta,u,t + dt / 2);
-      beta[i] = beta[i] + k3;
-      u[i] = u[i] + k3;
-      k4 = dt * ff(i,beta,u,t + dt);
-      
-      h[i] = h[i] + dt * ( k1 + 2 * k2 + 2 * k3 + k4 ) / 6.0;
-      
-    }
-    connect(n,h);
-    
-    
-    // 新たな座標
-    new_coordinate(n,h,t1,t2,phi,x,y);
-    connect(n,x);
-    connect(n,y);
-    
-    
-    //----------出力(x,y)----------//
-    
-    if( z % 1000 == 0 ){ // 250000
-      
-      sprintf(file, "./data/yoko_kuro%06d.dat", z / 1000 );
-      //sprintf(file, "./data/snow%06d.dat", z );
+      sprintf(file, "./data/yoko_kuro%06d.dat", z / 100 );
       fp = fopen(file, "w");
       
-      for( i = 0; i <= n; i++ ){
+      for(i = 0; i <= N; i++){
 	
-	//printf("x[%d] = %f y[%d] = %f\n", i, x[i], i, y[i]);
-	fprintf(fp, "%f %f %f\n", x[i], y[i], 0.0 );
+	fprintf(fp, "%f %f %f\n", X1[i], X2[i], 0.0);
 	
       }
       
@@ -672,683 +122,12 @@ int main(void){
       
     }
     
-    // 新たな辺の長さ
-    new_length(n,h,phi,l);
-    connect(n,l);
-    
-    
-    // 最大の辺と最小の辺を取り出す
-    l_max = l[0];
-    
-    for( i = 0; i <= n; i++ ){
-      
-      if( l_max < l[i] ){  //配列i番目の数値がmaxよりも大きかったら
-	
-	l_max = l[i];   //maxに配列i番目の数値を格納
-	
-      }
-      
-    }
-    
-    
-    //----------辺の判定----------//
-    
-    for( i = 1; i <= n; i++ ){
-      
-      // 2分割
-      if( chi[i] == 0.0 && l[i] > lc ){
-	
-	printf("i1 = %d\n", i);
-	
-	n = n + 2;
-	
-	for( j = n + 1; j >= i + 3; j-- ){
-	  
-	  h[j] = h[j - 2];
-	  l[j] = l[j - 2];
-	  t1[j] = t1[j - 2];
-	  t2[j] = t2[j - 2]; 
-	  
-	}
-	
-	if( t1[i] < 0 && t2[i] > 0){
-	  
-	  if( t1[i - 1] < 0 && t2[i - 1] < 0){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = 1.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0; 
-	    t2[i + 1] = -1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	} 
-	
-	else if( t1[i] < 0 && t2[i] < 0 ){
-	  
-	  if( t1[i - 1] < 0 && t2[i - 1] > 0){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = -1.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0; 
-	    t2[i + 1] = 1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	}
-	
-	else if( t1[i] == 0.0  && t2[i] == -1.0 ){
-	  
-	  if( t1[i - 1] > 0 && t2[i - 1] < 0){
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0; 
-	    t2[i + 1] = -1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-      
-	  else{
-	    
-	    t1[i + 1] = sqrt(3) / 2.0; 
-	    t2[i + 1] = -1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	}
-	
-	else if( t1[i] > 0 && t2[i] < 0 ){
-	  
-	  if( t1[i - 1] > 0 && t2[i - 1] > 0){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = -1.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = sqrt(3) / 2.0; 
-	    t2[i + 1] = 1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	}
-	
-	else if( t1[i] > 0 && t2[i] > 0){
-	  
-	  if( t1[i - 1] > 0 && t2[i - 1] < 0){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = 1.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = sqrt(3) / 2.0; 
-	    t2[i + 1] = -1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	}
-	
-	else{
-	  
-	  if( t1[i - 1] < 0 && t2[i - 1] > 0){
-	    
-	    t1[i + 1] = sqrt(3) / 2.0; 
-	    t2[i + 1] = 1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0; 
-	    t2[i + 1] = 1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	}
-	
-	connect(n,h);
-	connect(n,l);
-	connect(n,t1);
-	connect(n,t2);
-	
-	
-	// 外向き法線ベクトル
-	normal(n,t1,t2,n1,n2);
-	connect(n,n1);
-	connect(n,n2);
-	
-	
-	//----------短い辺を作ろう----------//
-	
-	x_temp = ( x[i] + x[i - 1] ) / 2.0;
-	y_temp = ( y[i] + y[i - 1] ) / 2.0;
-	
-	h[i + 1] = x_temp * n1[i + 1] + y_temp * n2[i + 1];
-	connect(n,h);
-	
-	
-	//接線角度の準備
-	tangent_angle_pre(n,t1,t2,D);
-	connect(n,D);
-	
-	// 接線角度
-	tangent_angle(n,t1,t2,D,nu);
-	connect(n,nu);
-	
-	// 外角
-	outside_angle(n,nu,phi);
-	connect(n,phi);
-	
-	//遷移数の準備
-	transition_number_pre(n,n1,n2,sigma);
-	connect(n,sigma);
-	
-	//遷移数
-	transition_number(n,sigma,chi);
-	connect(n,chi);
-	
-	// 新たな座標
-	new_coordinate(n,h,t1,t2,phi,x,y);
-	connect(n,x);
-	connect(n,y);
-	
-	// 新たな辺の長さ
-	new_length(n,h,phi,l);
-	connect(n,l);
-	
-      }
-      
-      // 3分割
-      else if( ( chi[i] == 1 || chi[i] == -1 ) && l[i] > lc ){
-	
-	printf("i2 = %d\n", i);
-	
-	n = n + 4;
-	
-	for( j = n + 1; j >= i + 5; j-- ){
-	  
-	  h[j] = h[j - 4];
-	  l[j] = l[j - 4];
-	  t1[j] = t1[j - 4];
-	  t2[j] = t2[j - 4]; 
-	  
-	}
-	
-	
-	if( t1[i] < 0 && t2[i] > 0){
-	  
-	  if( t1[i - 1] < 0 && t2[i - 1] < 0 ){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = 1.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = -sqrt(3) / 2.0; 
-	    t2[i + 3] = -1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] - eps;
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0; 
-	    t2[i + 1] = -1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = 0.0;
-	    t2[i + 3] = 1.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] + eps;
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	} 
-	
-	else if( t1[i] < 0 && t2[i] < 0 ){
-	  
-	  if( t1[i - 1] < 0 && t2[i - 1] > 0 ){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = -1.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = -sqrt(3) / 2.0; 
-	    t2[i + 3] = 1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] + eps;
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0; 
-	    t2[i + 1] = 1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = 0.0;
-	    t2[i + 3] = -1.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] - eps;
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	}
-	
-	else if( t1[i] == 0.0  && t2[i] == -1.0 ){
-	  
-	  if( t1[i - 1] < 0 && t2[i - 1] < 0 ){
-	    
-	    t1[i + 1] = sqrt(3) / 2.0;
-	    t2[i + 1] = -1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = -sqrt(3) / 2.0; 
-	    t2[i + 3] = -1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] + eps;
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0;
-	    t2[i + 1] = -1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = sqrt(3) / 2.0; 
-	    t2[i + 3] = -1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] - eps;
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	}
-	
-	else if( t1[i] > 0 && t2[i] < 0 ){
-	  
-	  if( t1[i - 1] > 0 && t2[i - 1] > 0 ){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = -1.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = sqrt(3) / 2.0; 
-	    t2[i + 3] = 1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] - eps;
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = sqrt(3) / 2.0; 
-	    t2[i + 1] = 1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = 0.0;
-	    t2[i + 3] = -1.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] + eps;
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	}
-	
-	else if( t1[i] > 0 && t2[i] > 0){
-	  
-	  if( t1[i - 1] > 0 && t2[i - 1] < 0 ){
-	    
-	    t1[i + 1] = 0.0;
-	    t2[i + 1] = 1.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = sqrt(3) / 2.0; 
-	    t2[i + 3] = -1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] + eps;
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = sqrt(3) / 2.0; 
-	    t2[i + 1] = -1.0 / 2.0; 
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = 0.0;
-	    t2[i + 3] = 1.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] - eps;
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	}
-	
-	else{
-	  
-	  if( t1[i - 1] > 0 && t2[i - 1] > 0 ){
-	    
-	    t1[i + 1] = -sqrt(3) / 2.0;
-	    t2[i + 1] = 1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = sqrt(3) / 2.0; 
-	    t2[i + 3] = 1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] + eps;
-	    h[i + 2] = h[i] - eps;
-	    h[i] = h[i] + eps;
-	    
-	  }
-	  
-	  else{
-	    
-	    t1[i + 1] = sqrt(3) / 2.0;
-	    t2[i + 1] = 1.0 / 2.0;
-	    t1[i + 2] = t1[i];
-	    t2[i + 2] = t2[i];
-	    t1[i + 3] = -sqrt(3) / 2.0; 
-	    t2[i + 3] = 1.0 / 2.0;
-	    t1[i + 4] = t1[i];
-	    t2[i + 4] = t2[i];
-	    h[i + 4] = h[i] - eps;
-	    h[i + 2] = h[i] + eps;
-	    h[i] = h[i] - eps;
-	    
-	  }
-	  
-	}
-	
-	connect(n,h);
-	connect(n,l);
-	connect(n,t1);
-	connect(n,t2);
-	
-	
-	// 外向き法線ベクトル
-	normal(n,t1,t2,n1,n2);
-	connect(n,n1);
-	connect(n,n2);
-	
-	
-	//----------短い辺を作ろう---------//
-	
-	// 1:1:1の分割
-	x_temp1 = ( x[i] + 2 * x[i - 1] ) / 3.0;
-	y_temp1 = ( y[i] + 2 * y[i - 1] ) / 3.0;
-	x_temp2 = ( 2 * x[i] + x[i - 1] ) / 3.0;
-	y_temp2 = ( 2 * y[i] + y[i - 1] ) / 3.0;
-	
-	/*
-	// 1:sqrt(2):1の分割
-	x_temp1 = ( x[i] + ( 1 + sqrt(2) ) * x[i - 1] ) / ( 2 + sqrt(2) );
-	y_temp1 = ( y[i] + ( 1 + sqrt(2) ) * y[i - 1] ) / ( 2 + sqrt(2) );
-	x_temp2 = ( ( 1 + sqrt(2) ) * x[i] + x[i - 1] ) / ( 2 + sqrt(2) );
-	y_temp2 = ( ( 1 + sqrt(2) ) * y[i] + y[i - 1] ) / ( 2 + sqrt(2) );
-	*/
-	
-	h[i + 1] = x_temp1 * n1[i + 1] + y_temp1 * n2[i + 1];
-	h[i + 3] = x_temp2 * n1[i + 3] + y_temp2 * n2[i + 3];
-	connect(n,h);
-	
-	
-	//接線角度の準備
-	tangent_angle_pre(n,t1,t2,D);
-	connect(n,D);
-	
-	// 接線角度
-	tangent_angle(n,t1,t2,D,nu);
-	connect(n,nu);
-	
-	// 外角
-	outside_angle(n,nu,phi);
-	connect(n,phi);
-	
-	//遷移数の準備
-	transition_number_pre(n,n1,n2,sigma);
-	connect(n,sigma);
-	
-	//遷移数
-	transition_number(n,sigma,chi);
-	connect(n,chi);
-	
-	// 新たな座標
-	new_coordinate(n,h,t1,t2,phi,x,y);
-	connect(n,x);
-	connect(n,y);
-	
-	// 新たな辺の長さ
-	new_length(n,h,phi,l);
-	connect(n,l);
-	
-      }
-      
-      
-      //辺を減らす
-      else if( chi[i] == 0.0 && ( l[i] / l_max ) < 1.0e-3 ){
-	
-	printf("i3 = %d\n", i);
-	
-	h[i - 1] = ( h[i - 1] + h[i + 1] ) / 2.0;
-	
-	
-	for( j = i; j <= n; j++ ){
-	  
-	  h[j] = h[j + 2];
-	  t1[j] = t1[j + 2];
-	  t2[j] = t2[j + 2];
-	  
-	}
-	
-	n = n - 2;
-	
-	connect(n,h);
-	connect(n,t1);
-	connect(n,t2);
-	
-	
-	// 外向き法線ベクトル
-	normal(n,t1,t2,n1,n2);
-	connect(n,n1);
-	connect(n,n2);
-	
-	//接線角度の準備
-	tangent_angle_pre(n,t1,t2,D);
-	connect(n,D);
-	
-	// 接線角度
-	tangent_angle(n,t1,t2,D,nu);
-	connect(n,nu);
-	
-	// 外角
-	outside_angle(n,nu,phi);
-	connect(n,phi);
-	
-	//遷移数の準備
-	transition_number_pre(n,n1,n2,sigma);
-	connect(n,sigma);
-	
-	//遷移数
-	transition_number(n,sigma,chi);
-	connect(n,chi);
-	
-	// 新たな座標
-	new_coordinate(n,h,t1,t2,phi,x,y);
-	connect(n,x);
-	connect(n,y);
-	
-	// 新たな辺の長さ
-	new_length(n,h,phi,l);
-	connect(n,l);
-	
-      }
-      
-    }
-    
-   
-    // 新たな辺の長さ
-    new_length(n,h,phi,l);
-    connect(n,l);
-    
-    // 曲率
-    for( i = 1; i <= n; i++ ){
-      
-      kappa[i] = alpha * chi[i] / l[i];
-      
-    }
-    
-    connect(n,kappa);
-    
-    printf("t = %d n = %d\n", z, n);
-    
-  }
-  
-  
-  //--------------------領域の解放--------------------//
-  
-  free(x);
-  free(y);
-  free(l);
-  free(t1);
-  free(t2);
-  free(n1);
-  free(n2);
-  free(h);
-  free(nu);
-  free(phi);
-  free(D);
-  free(sigma);
-  free(chi);
-  free(kappa);
+    printf("z = %d\n", z);
 
-  for( i = 0; i <= N; i++ ){
-    
-    free((void *)U[i]);
-    
   }
   
-  free((void *)U);
-  
-  free(p);
-  free(q);
-  free(A);
-  
-  for( i = 0; i <= N; i++ ){
-    
-    free((void *)B[i]);
-    
-  }
-  
-  free((void *)B);
-  
-  for( i = 0; i <= N; i++ ){
-    
-    free((void *)d[i]);
-    
-  }
-  
-  free((void *)d);
-  
-  free(u);
-
-  free(Q);
-
-  free(beta);
-  
-  //----------return----------//
+  free(X1);
+  free(X2);
   
   return 0;
   
@@ -1357,203 +136,732 @@ int main(void){
 
 //--------------------関数--------------------//
 
-void connect(int n, double *a){
+// 領域の確保
+double* make_vector(int n){
   
-  a[0] = a[n];
-  a[n + 1] = a[1];
+  double *a;
   
-}
-
-void normal(int n, double *t1, double *t2, double *n1, double *n2){
-  
-  int i;
-  
-  for( i = 1; i <= n; i++ ){
+  // メモリの確保
+  if( ( a = malloc( sizeof( double ) * N ) ) == NULL ){
     
-    n1[i] = t2[i];
-    n2[i] = -t1[i];
+    printf( "LACK of AVAILABLE MEMORY!" );
+    exit(1);
     
   }
   
+  return a;
+  
 }
 
-void height(int n, double *x, double *y, double *n1, double *n2, double *h){
+double** make_matrix(int ROW, int COL){
   
   int i;
+  double **b;
   
-  for( i = 1; i <= n; i++ ){
+  // メモリの確保
+  // b : (ad) p
+  if( ( b = malloc( sizeof( double* ) * ROW ) ) == NULL ){
     
-    h[i] = x[i] * n1[i] + y[i] * n2[i];
-    
+    printf( "LACK of AVAILABLE MEMORY!" );
+    exit(1);
+
   }
   
+  for(i = 0; i < ROW; i++){
+    
+    if( ( b[i] = malloc( sizeof( double ) * COL ) ) == NULL ){
+      
+      printf( "LACK of AVAILABLE MEMORY!" );
+      free(b);
+      exit(1);
+      
+    }
+
+  }
+  
+  return b;
+  
 }
 
-void tangent_angle_pre(int n, double *t1, double *t2, double *D){
+// 閉曲線のつなぎ
+void connect(double *x){
   
-  int i;
+  x[0] = x[N];
+  x[N + 1] = x[1];
   
-  for( i = 1; i <= n; i++ ){
-    
-    if( t1[i] * t2[i + 1] - t2[i] * t1[i + 1] < 0 ){
+}
+
+// つなぎ2個
+void connect_double(double *x, double *y){
+  
+  connect(x);
+  connect(y);
+  
+}
+
+// 内積
+double ip(double x1, double x2, double y1, double y2){
+  
+  return ( x1 * y1 + x2 * y2 );
+
+}
+
+// |y-x|
+double DIST(double x1, double x2, double y1, double y2){
+  
+  return ( sqrt((y1 - x1) * (y1 - x1) + (y2 - x2) * (y2 - x2)) );
+  
+}
+
+// 行列式
+double DET(double x1, double x2, double y1, double y2){
+  
+  return ( x1 * y2 - y1 * x2 );
+  
+}
+
+// 過飽和度
+void supersaturation(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *nu, double A, double r_c, double R, double *beta, double **U, double *q, double *u){
+
+  int i,j,k,ep;
+  double z1, z2;
+  double gamma, tmp, amax;
+  double dx_sim; // 数値積分の分割幅
+  double dx_pi; // 数値積分の分割幅
+
+  r_c = sqrt(A / M_PI);
+  
+  R = 6.5 * r_c;
+  
+  if( t == 0.0 ){
+
+    if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
       
-      D[i] = -1;
+      beta[i] = ( 1 - delta_beta ) * beta_max;
       
     }
-    
-    else if( t1[i] * t2[i + 1] - t2[i] * t1[i + 1] > 0 ){
       
-      D[i] = 1;
-      
-    }
-    
     else{
       
-      D[i] = 0;
+      beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
       
     }
-    
-  }
-
-}
-
-void tangent_angle(int n, double *t1, double *t2, double *D, double *nu){
-  
-  int i;
-  
-  if( t2[1] < 0 ){
-    
-    nu[1] = -acos(t1[1]);
     
   }
   
   else{
     
-    nu[1] = acos(t1[1]);
+    for( i = 1; i <= N; i++ ){
     
-  }
-  
-  for( i = 1; i <= n; i++ ){
-    
-    nu[i + 1] = nu[i] + D[i] * acos( t1[i] * t1[i + 1] + t2[i] * t2[i + 1] );
-    
-  }
-  
-  nu[0] = nu[1] - ( nu[n + 1] - nu[n] );
-  
-}
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
+	
+	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
 
-void outside_angle(int n, double *nu, double *phi){
-  
-  int i;
-  
-  for( i = 1; i <= n; i++ ){
-    
-    phi[i] = nu[i + 1] - nu[i];
-    
-  }
-  
-}
-
-void transition_number_pre(int n, double *n1, double *n2, double *sigma){
-  
-  int i;
-  
-  for( i = 1; i <= n; i++ ){
-    
-    if( n1[i - 1] * n2[i] - n2[i - 1] * n1[i] < 0 ){
+      }
       
-      sigma[i] = -1;
+      else{
+	
+	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
+	
+      }
       
     }
     
-    else if( n1[i - 1] * n2[i] - n2[i - 1] * n1[i] > 0 ){
+  }
+  connect(beta);
+  
+  for( i = 1; i <= N; i++ ){
+    
+    for( j = 1; j <= N; j++ ){
       
-      sigma[i] = 1;
+      if( j == i ){
+	
+	U[i][j] = 0.5 - ( ( k_B * T * beta[i] ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
+	
+      }
+
+      else{
+	
+	//----------数値積分----------//
+	
+	dx_sim = l[i] / N;
+	
+	U[i][j] = dx_sim * ( gg(i,j,l,x1,x2,t1,t2,n1,n2,0) + gg(i,j,l,x1,x2,t1,t2,n1,n2,dx_sim) ) / 2.0;
+	
+	for( k = 1; k < N; k++ ){
+	  
+	  z1 = k * dx_sim;
+	  z2 = ( k + 1 ) * dx_sim;
+	  
+	  U[i][j] = U[i][j] + dx_sim * ( gg(i,j,l,x1,x2,t1,t2,n1,n2,z1) + gg(i,j,l,x1,x2,t1,t2,n1,n2,z2) ) / 2.0;
+	  
+	}
+	
+	U[i][j] = U[i][j] + dx_sim * ( hh(i,j,l,x1,x2,t1,t2,0,beta) + hh(i,j,l,x1,x2,t1,t2,dx_sim,beta) ) / 2.0;
+	
+	for( k = 1; k < N; k++ ){
+	  
+	  z1 = k * dx_sim;
+	  z2 = ( k + 1 ) * dx_sim;
+	  
+	  U[i][j] = U[i][j] + dx_sim * ( hh(i,j,l,x1,x2,t1,t2,z1,beta) + hh(i,j,l,x1,x2,t1,t2,z2,beta) ) / 2.0;
+	  
+	}
+	
+      }
       
     }
     
+  }
+
+  for( j = 1; j <= N; j++ ){
+    
+      dx_pi = 2 * M_PI / N;
+      
+      q[j] = dx_pi * ( ii(j,l,x1,x2,0,R,r_c) + ii(j,l,x1,x2,dx_pi,R,r_c) ) / 2.0;
+      
+      for( k = 1; k < N; k++ ){
+	
+	z1 = k * dx_pi;
+	z2 = ( k + 1 ) * dx_pi;
+	
+	q[j] = q[j] + dx_pi * ( ii(j,l,x1,x2,z1,R,r_c) + ii(j,l,x1,x2,z2,R,r_c) ) / 2.0;
+	
+      }
+      
+  }
+
+  //----------ガウスの消去法----------//
+  
+  //----------消去----------//
+  
+  for( k = 1; k <= N - 1; k++ ){
+    
+    amax = fabs(U[k][k]);
+    ep = k;
+    
+    for( i = k + 1; i <= N; i++ ){
+      
+      if( fabs(U[i][k]) > amax ){
+	
+	amax = fabs(U[i][k]);
+	ep = i;
+	
+      }
+      
+    }
+    
+    if( amax < eps_sim ){
+      
+      printf("入力した行列は正則ではない\n");
+      
+    }
+    
+    if( ep != k ){
+      
+      for( j = k; j <= N; j++ ){
+	
+	tmp = U[k][j];
+	U[k][j] = U[ep][j];
+	U[ep][j] = tmp;
+	
+      }
+      
+      tmp = q[k];
+      q[k] = q[ep];
+      q[ep] = tmp;
+      
+    }
+    
+    for( i = k + 1; i <= N; i++ ){
+      
+      gamma = - U[i][k] / U[k][k];
+      
+      for( j = k + 1; j <= N; j++ ){
+	
+	U[i][j] = U[i][j] + gamma * U[k][j];
+	
+      }
+      
+      q[i] = q[i] + gamma * q[k];
+      
+    }
+    
+  }
+  
+  u[N] = q[N] / U[N][N];
+  
+  for( k = N - 1; k >= 1; k-- ){
+    
+    tmp = q[k];
+    
+    for( j = k + 1; j <= N; j++ ){
+      
+      tmp = tmp - U[k][j] * u[j];
+      
+    }
+    
+    u[k] = tmp / U[k][k];
+    
+  }
+  
+}
+
+double gg( int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double a ){
+
+  return (
+
+	  ( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * n1[i] + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * n2[i] ) / ( 2 * M_PI * ( sqrt( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl ) ) )
+	  
+	  );
+
+}
+
+double hh( int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double a, double *beta ){
+
+  return (
+
+	  ( ( k_B * T * beta[i] ) / ( 2 * M_PI * E * p_e * v_c ) ) * log( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl )
+	  
+	  );
+
+}
+
+double ii( int j, double *l, double *x1, double *x2, double a, double R, double r_c){
+
+  return (
+
+	  ( -( log( sqrt( ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) ) + epsl * epsl ) / ( 2 * M_PI * R * log(R / r_c) ) )
+	  + ( ( x1[j - 1] * cos(a) + x2[j - 1] * sin(a) - R ) / ( 2 * M_PI * ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) ) ) ) * R * sigma_infty
+	  
+	  );
+
+}
+
+// ルンゲクッタ
+void runge_qutta(double t, double *X1, double *X2){
+  
+  int i;
+  double t_temp;
+  double *x_temp1,*x_temp2,*F1,*F2;
+  double *k11,*k12,*k21,*k22,*k31,*k32,*k41,*k42;
+  
+  k11 = make_vector(N + 2);
+  k12 = make_vector(N + 2);
+  k21 = make_vector(N + 2);
+  k22 = make_vector(N + 2);
+  k31 = make_vector(N + 2);
+  k32 = make_vector(N + 2);
+  k41 = make_vector(N + 2);
+  k42 = make_vector(N + 2);
+  
+  x_temp1 = make_vector(N + 2);
+  x_temp2 = make_vector(N + 2);
+  F1 = make_vector(N + 2);
+  F2 = make_vector(N + 2);
+  
+  F(t,X1,X2,F1,F2);
+  
+  for(i = 1; i <= N; i++){
+    
+    k11[i] = F1[i];
+    k12[i] = F2[i];
+    x_temp1[i] = X1[i] + k11[i] * dt / 2.0;
+    x_temp2[i] = X2[i] + k12[i] * dt / 2.0;
+
+  }
+  connect_double(x_temp1,x_temp2);
+  
+  t_temp = t + dt / 2.0;
+  
+  F(t_temp,x_temp1,x_temp2,F1,F2);
+  
+  for(i = 1; i <= N; i++){
+    
+    k21[i] = F1[i];
+    k22[i] = F2[i];
+    x_temp1[i] = X1[i] + k21[i] * dt / 2.0;
+    x_temp2[i] = X2[i] + k22[i] * dt / 2.0;
+
+  }
+  connect_double(x_temp1,x_temp2);
+
+  F(t_temp,x_temp1,x_temp2,F1,F2);
+  
+  for(i = 1; i <= N; i++){
+    
+    k31[i] = F1[i];
+    k32[i] = F2[i];
+    x_temp1[i] = X1[i] + k31[i] * dt;
+    x_temp2[i] = X2[i] + k32[i] * dt;
+    
+  }
+  connect_double(x_temp1,x_temp2);
+
+  t_temp = t + dt;
+  
+  F(t_temp,x_temp1,x_temp2,F1,F2);
+  
+  for(i = 1; i <= N; i++){
+    
+    k41[i] = F1[i];
+    k42[i] = F2[i];
+      
+    X1[i] = X1[i] + (k11[i] + 2.0*k21[i] + 2.0*k31[i] + k41[i])*dt/6.0;
+    X2[i] = X2[i] + (k12[i] + 2.0*k22[i] + 2.0*k32[i] + k42[i])*dt/6.0;
+
+  }
+  connect_double(X1,X2);
+  
+  free(k11);
+  free(k12);
+  free(k21);
+  free(k22);
+  free(k31);
+  free(k32);
+  free(k41);
+  free(k42);
+  free(x_temp1);
+  free(x_temp2);
+  free(F1);
+  free(F2);
+  
+}
+
+// 右辺
+void F(double t, double *x1, double *x2, double *F1, double *F2){
+  
+  int i;
+  
+  double *T1,*T2,*N1,*N2;
+  T1 = make_vector(N + 2);
+  T2 = make_vector(N + 2);
+  N1 = make_vector(N + 2);
+  N2 = make_vector(N + 2);
+  
+  double *V,*W;
+  V = make_vector(N + 2);
+  W = make_vector(N + 2);
+  
+  ODE_pre(t,x1,x2,T1,T2,N1,N2,V,W);
+  
+  for(i = 1; i <= N; i++){
+    
+    F1[i] = V[i] * N1[i] + W[i] * T1[i];
+    F2[i] = V[i] * N2[i] + W[i] * T2[i];
+    
+  }
+  connect_double(F1,F2);
+  
+  free(W);
+  free(V);
+  free(T1);
+  free(T2);
+  free(N1);
+  free(N2);
+  
+}
+
+// x --> T,N,V,W
+void ODE_pre(double t, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *V, double *W){
+
+  int i;
+  
+  double *l;
+  double *t1,*t2,*n1,*n2;
+  double *nu;
+  double *phi;
+  double *kappa;
+  double L,A;
+
+  double r_c;
+  double R;
+
+  double *beta;
+  double **U;
+  double *u;
+  double *q;
+
+  
+  l = make_vector(N + 2);
+  nu = make_vector(N + 2);
+  phi = make_vector(N + 2);
+  kappa = make_vector(N + 2);
+
+  t1 = make_vector(N + 2);
+  t2 = make_vector(N + 2);
+  n1 = make_vector(N + 2);
+  n2 = make_vector(N + 2);
+
+  beta = make_vector(N + 2);
+  U = make_matrix(N + 2,N + 2);
+  u = make_vector(N + 2);
+  q = make_vector(N + 2);
+  
+  // T,N
+  quantities(t,x1,x2,l,t1,t2,n1,n2,T1,T2,N1,N2,phi,kappa);
+  
+  // L,A
+  measure(t,x1,x2,&L,&A);
+  
+  // V,W
+  velocity(t,x1,x2,n1,n2,l,phi,kappa,L,A,V,W);
+
+  supersaturation(t,x1,x2,l,t1,t2,n1,n2,nu,A,r_c,R,beta,U,q,u);
+  
+  free(t1);
+  free(t2);
+  free(n1);
+  free(n2);
+  
+  free(kappa);
+  free(phi);
+  free(nu);
+  free(l);
+
+  free(beta);
+  for( i = 0; i <= N; i++ ){
+    
+    free((void *)U[i]);
+    
+  }
+  free((void *)U);
+  free(u);
+  free(q);
+  
+}
+
+// 初期条件
+void initial_condition(double *x1, double *x2){
+
+  int i;
+  double theta;
+
+  for( i = 1; i <= N; i++ ){
+
+    theta = i * 2 * M_PI / N;
+    
+    x1[i] = cos(theta);
+    x2[i] = sin(theta);
+    
+  }
+  connect_double(x1,x2);
+  /*
+  int i;
+  double u;
+  double a1,a2,a3;
+  
+  for(i = 1; i <= N; i++){
+    
+    u = i * 1.0 / N;
+    
+    a1 = 1.8 * cos(2.0 * M_PI * u);
+    a2 = 0.2 + sin(M_PI * u) * sin(6.0 * M_PI * u) * sin(2.0 * a1);
+    a3 = 0.5 * sin(2.0 * M_PI * u) + sin(a1) + a2 * sin(2.0 * M_PI * u);
+    
+    x1[i] = 2.0 * 0.5 * a1;
+    x2[i] = 2.0 * 0.54 * a3;
+
+  }
+  connect_double(x1,x2);
+  */
+}
+
+// x --> t,n,T,N,phi,kappa
+void quantities(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *phi, double *kappa){
+  
+  int i;
+  double D,I;
+  
+  for(i = 1; i <= N; i++){
+    
+    l[i] = DIST(x1[i-1],x2[i-1],x1[i],x2[i]);
+    
+    t1[i] = (x1[i] - x1[i-1]) / l[i];
+    t2[i] = (x2[i] - x2[i-1]) / l[i];
+    
+    n1[i] = t2[i];
+    n2[i] = -t1[i];
+    
+  }
+  connect(l);
+  connect_double(t1,t2);
+  connect_double(n1,n2);
+  
+  for(i = 1; i <= N; i++){
+    
+    D = DET(t1[i],t2[i],t1[i+1],t2[i+1]);
+    I = ip(t1[i],t2[i],t1[i+1],t2[i+1]);
+    
+    RANGE_CHECK(I,-1.0,1.0);
+    
+    if(D >= 0.0){
+      
+      phi[i] = acos(I);
+      
+    }
+
     else{
       
-      sigma[i] = 0;
-      
+      phi[i] = -acos(I);
+
     }
     
   }
+  connect(phi);
+  
+  for(i = 1; i <= N; i++){
+    
+    T1[i] = ( t1[i] + t1[i + 1] ) / ( 2.0 * cos(phi[i] / 2.0) );
+    T2[i] = ( t2[i] + t2[i + 1] ) / ( 2.0 * cos(phi[i] / 2.0) );
+    
+    N1[i] = T2[i];
+    N2[i] = -T1[i];
+    
+    kappa[i] = ( tan(phi[i]) + tan(phi[i - 1]) ) / l[i];
+    
+  }
+  connect_double(T1,T2);
+  connect_double(N1,N2);
+  connect(kappa);
   
 }
 
-void transition_number(int n, double *sigma, double *chi){
+// x,l --> L,A
+void measure(double t, double *x1, double *x2, double *L, double *A){
   
   int i;
   
-  for( i = 1; i <= n; i++ ){
+  *L = 0.0;
+  *A = 0.0;
+  
+  for(i = 1; i <= N; i++){
     
-    chi[i] = ( sigma[i] + sigma[i + 1] ) / 2.0;
-    
+    *L += DIST(x1[i],x2[i],x1[i - 1],x2[i - 1]);
+    *A += DET(x1[i - 1],x2[i - 1],x1[i],x2[i]);
+
   }
+  
+  *A = *A/2.0;
   
 }
 
-void new_coordinate(int n, double *h, double *t1, double *t2, double *phi, double *x, double *y){
+// h = h(t)
+double height(double t){
+  
+  return exp(t);
+
+}
+
+double height_t(double t){
+  
+  return exp(t);
+  
+}
+
+//緩和項
+double omega(int n){
+  
+  return 10.0 * n;
+
+}
+
+// x,n,l,t,phi,kappa,L --> V,W
+void velocity(double t, double *x1, double *x2, double *n1, double *n2, double *l, double *phi, double *kappa, double L, double A, double *V, double *W){
   
   int i;
+  double *v;
+  double *beta;
+  double *u;
   
-  for( i = 1; i <= n; i++ ){
-    
-    x[i] = ( h[i + 1] * t1[i] - h[i] * t1[i + 1] ) / sin(phi[i]);
-    y[i] = ( h[i + 1] * t2[i] - h[i] * t2[i + 1] ) / sin(phi[i]);
-    
-  }
+  v = make_vector(N + 2);
+  beta = make_vector(N + 2);
+  u = make_vector(N + 2);
+  
+  normal_speed(t,kappa,phi,beta,u,v,V);
+  tangent_speed(t,l,phi,kappa,v,V,L,W);
+  
+  free(u);
+  free(beta);
+  free(v);
   
 }
 
-void new_length(int n, double *h, double *phi, double *l){
+// n,phi --> v,V
+void normal_speed(double t, double *kappa, double *phi, double *beta, double *u, double *v, double *V){
   
   int i;
-  
-  for( i = 1; i <= n; i++ ){
+
+  for(i = 1; i <= N; i++){
     
-    l[i] = ( h[i + 1] / sin(phi[i]) ) - ( h[i] * ( ( 1.0 / tan(phi[i]) ) + ( 1.0 / tan(phi[i - 1] ) ) ) ) + ( h[i - 1] / sin(phi[i - 1]) );
+    v[i] = beta[i] * u[i];
+
+  }
+  connect(v);
+  
+  for(i = 1; i <= N; i++){
+    
+    V[i] = ( v[i] + v[i + 1] ) / ( 2.0 * cos(phi[i] / 2.0) );
+
+  }
+  connect(V);
+
+}
+
+// l,phi,kappa,v,V,L --> W
+void tangent_speed(double t, double *l, double *phi, double *kappa, double *v, double *V, double L, double *W)
+{
+  int i;
+  double *psi, *PSI;
+  double L_dot;
+  double a,b,c;
+  
+  psi = make_vector(N + 2);
+  PSI = make_vector(N + 2);
+  
+  psi[1] = 0.0;
+  L_dot = 0.0;
+  
+  for(i = 1; i <= N; i++){
+    
+    L_dot += kappa[i] * v[i] * l[i];
     
   }
   
-}
+  for(i = 2; i <= N; i++){
+    
+    psi[i] = ( L_dot / N ) - V[i] * sin(phi[i] / 2.0) - V[i - 1] * sin(phi[i - 1] / 2.0) + ( ( L / N ) - l[i] ) * omega(N);
 
-double ff( int i, double *beta, double *u, double t ){
+  }
   
-  return ( beta[i] * u[i] );
+  PSI[1] = psi[1];
   
-}
+  for(i = 2; i <= N; i++){
+    
+    PSI[i] = PSI[i - 1] + psi[i];
 
+  }
+  
+  a = 0.0;
+  b = 0.0;
+  
+  for(i = 1; i <= N; i++){
+    
+    a += PSI[i] / cos(phi[i] / 2.0);
+    b += 1.0 / cos(phi[i] / 2.0);
+    
+  }
+  
+  c = -a / b;
+  
+  for(i = 1; i <= N; i++){
+    
+    W[i] = ( PSI[i] + c ) / cos(phi[i] / 2.0);
 
-double gg( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double *n1, double *n2, double a ){
+  }
+  connect(W);
 
-  return (
-
-	  ( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * n1[i] + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * n2[i] ) / ( 2 * M_PI * ( sqrt( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl ) ) )
-	  
-	  );
-
-}
-
-double hh( int i, int j, double *l, double *x, double *y, double *t1, double *t2, double a ){
-
-  return (
-
-	  ( ( k_B * T * beta_max ) / ( 2 * M_PI * E * p_e * v_c ) ) * log( ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) * ( x[j - 1] - ( x[i - 1] - a * t1[i] ) ) + ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) * ( y[j - 1] - ( y[i - 1] - a * t2[i] ) ) + epsl * epsl )
-	  
-	  );
-
-}
-
-double ii( int j, double *l, double *x, double *y, double a, double R, double r_c){
-
-  return (
-
-	  ( -( log( sqrt( ( x[j - 1] - R * cos(a) ) * ( x[j - 1] - R * cos(a) ) + ( y[j - 1] - R * sin(a) ) * ( y[j - 1] - R * sin(a) ) ) + epsl * epsl ) / ( 2 * M_PI * R * log(R / r_c) ) )
-	  + ( ( x[j - 1] * cos(a) + y[j - 1] * sin(a) - R ) / ( 2 * M_PI * ( x[j - 1] - R * cos(a) ) * ( x[j - 1] - R * cos(a) ) + ( y[j - 1] - R * sin(a) ) * ( y[j - 1] - R * sin(a) ) ) ) ) * R * sigma_infty
-	  
-	  );
-
+  free(PSI);
+  free(psi);
+  
 }
