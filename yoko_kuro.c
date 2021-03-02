@@ -6,7 +6,7 @@
 //--------------------定数--------------------//
 
 #define N ( 300 )
-#define TMAX ( 0.4 )
+#define TMAX ( 4.0 )
 #define dt ( 0.1 / ( N * N ) )
 #define RANGE_CHECK(x, xmin, xmax) ( x = ( x < xmin ? xmin : ( x < xmax ?  x : xmax)));
 
@@ -38,13 +38,13 @@
 
 //--------------------関数--------------------//
 
-double* make_vector(int n); // 領域の確保(ベクトル)
-double** make_matrix(int ROW, int COL); // 領域の確保(行列)
-void connect(double *x); // 閉曲線のつなぎ
-void connect_double(double* x, double *y); // つなぎ2個
+double* make_vector( int n ); // 領域の確保(ベクトル)
+double** make_matrix( int ROW, int COL ); // 領域の確保(行列)
+void connect( double *x ); // 閉曲線のつなぎ
+void connect_double( double* x, double *y ); // つなぎ2個
 double ip(double x1, double x2, double y1, double y2); // 内積
 double DIST(double x1, double x2, double y1, double y2); // |y - x|
-double DET(double x1, double x2, double y1, double y2); // 行列式
+double DET( double x1, double x2, double y1, double y2 ); // 行列式
 void supersaturation(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *nu, double A, double r_c, double R, double *beta, double **U, double *q, double *u);
 double gg( int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double a );
 double hh( int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double a, double *beta );
@@ -53,7 +53,7 @@ void runge_qutta(double t, double *X1, double *X2); // ルンゲクッタ
 void F(double t, double *x1, double *x2, double *F1, double *F2);
 void ODE_pre(double t, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *V, double *W); // x --> T,N,V,W
 void initial_condition(double *x1, double *x2); // 初期条件
-void quantities(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *phi, double *kappa); //x --> t,n,T,N,phi,kappa
+void quantities(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa); //x --> t,n,T,N,phi,kappa
 void measure(double t, double *x1, double *x2, double *L, double *A); // x,l --> L,A
 double omega(int n); // 緩和項
 void velocity(double t, double *x1, double *x2, double *n1, double *n2, double *l, double *phi, double *kappa, double L, double A, double *V, double *W); // x,n,l,t,phi,kappa,L --> V,W
@@ -107,14 +107,14 @@ int main(void){
     z++;
     t = z * dt;
     
-    if(z % 100 == 0){
+    if(z % 1000 == 0){
       
-      sprintf(file, "./data/yoko_kuro%06d.dat", z / 100 );
+      sprintf(file, "./data/yoko_kuro%06d.dat", z / 1000 );
       fp = fopen(file, "w");
       
       for(i = 0; i <= N; i++){
 	
-	fprintf(fp, "%f %f %f\n", X1[i], X2[i], 0.0);
+	fprintf(fp, "%f %f %f\n", X1[i], X2[i], t);
 	
       }
       
@@ -123,7 +123,7 @@ int main(void){
     }
     
     printf("z = %d\n", z);
-
+    
   }
   
   free(X1);
@@ -137,14 +137,14 @@ int main(void){
 //--------------------関数--------------------//
 
 // 領域の確保
-double* make_vector(int n){
+double* make_vector( int n ){
   
   double *a;
   
   // メモリの確保
-  if( ( a = malloc( sizeof( double ) * N ) ) == NULL ){
+  if( ( a = malloc( n * sizeof(double *) ) ) == NULL ){
     
-    printf( "LACK of AVAILABLE MEMORY!" );
+    printf("メモリが確保できません\n");
     exit(1);
     
   }
@@ -153,30 +153,24 @@ double* make_vector(int n){
   
 }
 
-double** make_matrix(int ROW, int COL){
+double** make_matrix( int ROW, int COL ){
   
   int i;
   double **b;
   
   // メモリの確保
-  // b : (ad) p
-  if( ( b = malloc( sizeof( double* ) * ROW ) ) == NULL ){
-    
-    printf( "LACK of AVAILABLE MEMORY!" );
-    exit(1);
 
+  if( ( b = malloc( ROW * sizeof(double *) ) ) == NULL ){
+    
+    printf("メモリが確保できません\n");
+    exit(1);
+    
   }
   
-  for(i = 0; i < ROW; i++){
+  for( i = 0; i <= ROW; i++ ){
     
-    if( ( b[i] = malloc( sizeof( double ) * COL ) ) == NULL ){
-      
-      printf( "LACK of AVAILABLE MEMORY!" );
-      free(b);
-      exit(1);
-      
-    }
-
+    b[i] = malloc( COL * sizeof(double) );
+    
   }
   
   return b;
@@ -184,7 +178,7 @@ double** make_matrix(int ROW, int COL){
 }
 
 // 閉曲線のつなぎ
-void connect(double *x){
+void connect( double *x ){
   
   x[0] = x[N];
   x[N + 1] = x[1];
@@ -192,7 +186,7 @@ void connect(double *x){
 }
 
 // つなぎ2個
-void connect_double(double *x, double *y){
+void connect_double( double *x, double *y ){
   
   connect(x);
   connect(y);
@@ -200,21 +194,21 @@ void connect_double(double *x, double *y){
 }
 
 // 内積
-double ip(double x1, double x2, double y1, double y2){
+double ip( double x1, double x2, double y1, double y2 ){
   
   return ( x1 * y1 + x2 * y2 );
-
+  
 }
 
 // |y-x|
-double DIST(double x1, double x2, double y1, double y2){
+double DIST( double x1, double x2, double y1, double y2 ){
   
-  return ( sqrt((y1 - x1) * (y1 - x1) + (y2 - x2) * (y2 - x2)) );
+  return ( sqrt(( y1 - x1 ) * ( y1 - x1 ) + ( y2 - x2 ) * ( y2 - x2 )) );
   
 }
 
 // 行列式
-double DET(double x1, double x2, double y1, double y2){
+double DET( double x1, double x2, double y1, double y2 ){
   
   return ( x1 * y2 - y1 * x2 );
   
@@ -235,21 +229,29 @@ void supersaturation(double t, double *x1, double *x2, double *l, double *t1, do
   
   if( t == 0.0 ){
 
-    if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
+    // printf("a\n");
+
+    for( i = 1; i <= N; i++ ){
       
-      beta[i] = ( 1 - delta_beta ) * beta_max;
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
+	
+	beta[i] = ( 1 - delta_beta ) * beta_max;
+	
+      }
+      
+      else{
+	
+	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
+	
+      }
       
     }
-      
-    else{
-      
-      beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
-      
-    }
-    
+
   }
   
   else{
+
+    // printf("b\n");
     
     for( i = 1; i <= N; i++ ){
     
@@ -314,6 +316,7 @@ void supersaturation(double t, double *x1, double *x2, double *l, double *t1, do
     
   }
 
+  
   for( j = 1; j <= N; j++ ){
     
       dx_pi = 2 * M_PI / N;
@@ -330,6 +333,14 @@ void supersaturation(double t, double *x1, double *x2, double *l, double *t1, do
       }
       
   }
+  
+  /*
+  for( j = 1; j <= N; j++ ){
+
+    q[i] = -2 * sigma_infty;
+    
+  }
+  */
 
   //----------ガウスの消去法----------//
   
@@ -404,6 +415,7 @@ void supersaturation(double t, double *x1, double *x2, double *l, double *t1, do
     u[k] = tmp / U[k][k];
     
   }
+  // connect(u);
   
 }
 
@@ -599,15 +611,16 @@ void ODE_pre(double t, double *x1, double *x2, double *T1, double *T2, double *N
   q = make_vector(N + 2);
   
   // T,N
-  quantities(t,x1,x2,l,t1,t2,n1,n2,T1,T2,N1,N2,phi,kappa);
+  quantities(t,x1,x2,l,t1,t2,n1,n2,T1,T2,N1,N2,nu,phi,kappa);
+
+  // beta,u
+  supersaturation(t,x1,x2,l,t1,t2,n1,n2,nu,A,r_c,R,beta,U,q,u);
   
   // L,A
   measure(t,x1,x2,&L,&A);
   
   // V,W
   velocity(t,x1,x2,n1,n2,l,phi,kappa,L,A,V,W);
-
-  supersaturation(t,x1,x2,l,t1,t2,n1,n2,nu,A,r_c,R,beta,U,q,u);
   
   free(t1);
   free(t2);
@@ -668,7 +681,7 @@ void initial_condition(double *x1, double *x2){
 }
 
 // x --> t,n,T,N,phi,kappa
-void quantities(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *phi, double *kappa){
+void quantities(double t, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa){
   
   int i;
   double D,I;
@@ -687,6 +700,28 @@ void quantities(double t, double *x1, double *x2, double *l, double *t1, double 
   connect(l);
   connect_double(t1,t2);
   connect_double(n1,n2);
+
+  if( t2[1] < 0 ){
+    
+    nu[1] = -acos(t1[1]);
+    
+  }
+  
+  else{
+    
+    nu[1] = acos(t1[1]);
+    
+  }
+  
+  for( i = 1; i <= N; i++ ){
+    
+    D = DET(t1[i],t2[i],t1[i+1],t2[i+1]);
+    
+    nu[i + 1] = nu[i] + D * acos( t1[i] * t1[i + 1] + t2[i] * t2[i + 1] );
+    
+  }
+  
+  nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
   
   for(i = 1; i <= N; i++){
     
