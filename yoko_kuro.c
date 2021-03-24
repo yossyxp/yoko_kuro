@@ -6,7 +6,7 @@
 //--------------------定数--------------------//
 
 #define Z ( 2048 )
-#define TMAX ( 10.1 )
+#define TMAX ( 5.5 )
 #define RANGE_CHECK( x, xmin, xmax ) ( x = ( x < xmin ? xmin : ( x < xmax ?  x : xmax ) ) );
 
 
@@ -24,8 +24,7 @@
 #define E ( 40 ) // 拡散係数[m^2/s]
 #define alpha_1 ( 0.1 ) // 凝縮定数
 
-//#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
-#define beta_max ( 0.01 )
+#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
 #define sigma_star ( 9.5 * f_0 * energy / ( k_B * T * x_s ) )
 
 //#define sigma_infty ( 17 ) // 初期値
@@ -73,7 +72,7 @@ int main(void){
 
   //---------------------変数--------------------//
   
-  int i,j,z,N = 64;
+  int i,j,z,N = 128;
   double t,dt = 0.1 / ( N * N );
   double L,A,L_tmp = 2 * M_PI;
   
@@ -547,8 +546,8 @@ void initial_condition( int N, double *x1, double *x2 ){
     
     u = i * 2.0 * M_PI / N;
     
-    x1[i] = cos(u);
-    x2[i] = sin(u);
+    x1[i] = 10 * cos(u);
+    x2[i] = 10 * sin(u);
 
   }
   connect_double(N,x1,x2);
@@ -682,9 +681,12 @@ void normal_speed( double t, int N, double *kappa, double *phi, double *beta, do
   
   int i;
 
+  //  printf("beta = %.30f\n",beta[2]);
+  //  printf("u = %.30f\n",u[2]);
+
   for( i = 1; i <= N; i++ ){
     
-    v[i] = beta_max * u[i];
+    v[i] = beta[i] * u[i];
 
   }
   connect(N,v);
@@ -771,11 +773,9 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
   
   if( t == 0.0 ){
 
-    // printf("a\n");
-
     for( i = 1; i <= N; i++ ){
       
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) ){
 	
 	beta[i] = ( 1 - delta_beta ) * beta_max;
 	
@@ -793,17 +793,22 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
   
   else{
     
-    // printf("b\n");
-    
     for( i = 1; i <= N; i++ ){
+
+      //printf("nu[%d] = %.16f\n", i, nu[i]);
+      //printf("%.16f %.16f\n", M_PI / 3.0 - 1.0e-15, M_PI / 3.0 + 1.0e-15);
       
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) || nu[i] == 2 * M_PI ){
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) ){
+
+	//printf("a\n");
 	
 	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
 
       }
       
       else{
+
+	//printf("b\n");
 	
 	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
 	
@@ -820,7 +825,7 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
       
       if( j == i ){
 	
-	U[i][j] = 0.5 - ( ( k_B * T * beta_max ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
+	U[i][j] = 0.5 - ( ( k_B * T * beta[i] ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
 	
       }
 
@@ -853,6 +858,8 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
 	}
 	
       }
+
+      //printf("U[%d][%d] = %.20f\n", i, j, U[i][j]);
       
     }
     
@@ -873,16 +880,20 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
 	q[j] = q[j] + dx_pi * ( ii(t,j,l,x1,x2,z1,R,r_c) + ii(t,j,l,x1,x2,z2,R,r_c) ) / 2.0;
 	
       }
+
+      //printf("q[%d] = %.30f\n", j, q[j]);
       
   }
   
+  
   /*
-  for( j = 1; j <= N; j++ ){
+  for( i = 1; i <= N; i++ ){
 
     q[i] = -2 * sigma_infty;
     
   }
   */
+  
 
   //----------ガウスの消去法----------//
   
@@ -965,7 +976,7 @@ double gg( double t, int i, int j, double *l, double *x1, double *x2, double *t1
 
   return (
 
-	  ( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * n1[i] + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * n2[i] ) / ( 2 * M_PI * ( sqrt( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl ) ) )
+	  ( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * n1[i] + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * n2[i] ) / ( 2 * M_PI * ( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl ) )
 	  
 	  );
 
@@ -975,7 +986,7 @@ double hh( double t, int i, int j, double *l, double *x1, double *x2, double *t1
 
   return (
 
-	  ( ( k_B * T * beta_max ) / ( 2 * M_PI * E * p_e * v_c ) ) * log( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl )
+	  ( ( k_B * T * beta[i] ) / ( 2 * M_PI * E * p_e * v_c ) ) * log( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl )
 	  
 	  );
 
@@ -986,7 +997,7 @@ double ii( double t, int j, double *l, double *x1, double *x2, double a, double 
   return (
 
 	  ( -( log( sqrt( ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) ) + epsl * epsl ) / ( 2 * M_PI * R * log(R / r_c) ) )
-	  + ( ( x1[j - 1] * cos(a) + x2[j - 1] * sin(a) - R ) / ( 2 * M_PI * ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) ) ) ) * R * sigma_infty
+	    + ( ( x1[j - 1] * cos(a) + x2[j - 1] * sin(a) - R ) / ( 2 * M_PI * ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) + epsl * epsl ) ) ) * R * sigma_infty
 	  
 	  );
 
