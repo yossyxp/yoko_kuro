@@ -8,10 +8,10 @@ set xlabel "x" tc rgb "white"
 set ylabel "y" tc rgb "white" offset 1, 0
 set palette rgbformulae 22, 13, -31
 set style fill border 6
-set xrange[-0.1:0.1]
-set yrange[-0.1:0.1]
+set xrange[-2:2]
+set yrange[-2:2]
 set isosamples 1000
-do for [i=0:51]{
+do for [i=0:88]{
 outfile = sprintf("yoko_kuro2%06d.png", i)
 set output outfile
 #plot for[j=0:i] sprintf("yoko_kuro%06d.dat", j) using 1:2 with lines lc "skyblue" lw 0.5

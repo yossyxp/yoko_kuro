@@ -7,36 +7,13 @@
 
 // #define N ( 600 )
 #define Z ( 2048 )
-#define TMAX ( 4.4 )
+#define TMAX ( 20.4 )
 // #define dt ( 0.1 / ( N * N ) )
 #define RANGE_CHECK(x, xmin, xmax) ( x = ( x < xmin ? xmin : ( x < xmax ?  x : xmax ) ) );
 
-//----------定数(結晶)----------//
-
-#define T ( 281.15 ) // 絶対温度[K]
-#define p_e ( 1.66e+3 ) // 平衡蒸気圧[dyn/cm^2]
-#define v_c ( 3.25e-23 ) // 結晶相での水分子の体積[cm^3]
-#define f_0 ( 8.3e-16 ) // 界面において1分子あたりが占める表面積[cm^2]
-#define m ( 3.0e-23 ) // 水分子の質量[g]
-#define e ( 4.5e-8 ) // ステップの高さ[m]
-#define x_s ( 400 * e ) // 吸着分子がステップ滞在中に表面拡散する平均距離[m]
-#define k_B ( 1.38e-16 ) // ボルツマン定数[erg/K]
-#define energy ( 2.0e-6 ) // ステップの単位長さあたりの自由エネルギー[erg/cm]
-#define E ( 40.0 ) // 拡散係数[m^2/s]
-#define alpha_1 ( 0.1 ) // 凝縮定数
-
-#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
-#define sigma_star ( 9.5 * f_0 * energy / ( k_B * T * x_s ) )
-
-//#define sigma_infty ( 17 ) // 初期値
-#define sigma_infty ( 50.0 ) // 初期値
-#define delta_beta ( 0.4 )
-
-
-//----------定数(eps)----------//
-
-#define epsl ( 1.0e-15 ) // 場合分け回避に用いるeps
-#define eps_sim ( 1.0e-40 ) // 連立方程式に用いるeps
+#define alpha ( 4.0 )
+#define beta ( 1.5 )
+#define eps ( 0.8 )
 
 
 //--------------------関数--------------------//
@@ -52,19 +29,13 @@ void runge_qutta(double t, double dt, int N, double *X1, double *X2); // ルン�
 void F(double t, int N, double *x1, double *x2, double *F1, double *F2);
 void ODE_pre(double t, int N, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *V, double *W); // x --> T,N,V,W
 void initial_condition(int N, double *x1, double *x2); // 初期条件
-void quantities(double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa); //x --> t,n,T,N,phi,kappa
+void quantities(double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa, double *kappa_s, double *kappa_ss); //x --> t,n,T,N,phi,kappa
 void measure(double t, int N, double *x1, double *x2, double *L, double *A); // x,l --> L,A
 void increase( double t, int N, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *kappa, double L, double A, double L_tmp, double dt );
 double omega(int n); // 緩和項
-void velocity(double t, int N, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double *l, double *nu, double *phi, double *kappa, double L, double A, double *beta, double *u, double *V, double *W); // x,n,l,t,phi,kappa,L --> V,W
-void normal_speed(double t, int N, double *kappa, double *phi, double *beta, double *u, double *v, double *V); // n,phi --> v,V
+void velocity(double t, int N, double *x1, double *x2, double *n1, double *n2, double *l, double *nu, double *phi, double *kappa, double *kappa_s, double *kappa_ss, double L, double A, double *V, double *W); // x,n,l,t,phi,kappa,L --> V,W
+void normal_speed(double t, int N, double *nu, double *kappa, double *kappa_s, double *kappa_ss, double *phi, double *v, double *V); // n,phi --> v,V
 void tangent_speed(double t, int N, double *l, double *phi, double *kappa, double *v, double *V, double L, double *W); // l,phi,kappa,v,V,L --> W
-void supersaturation( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *nu, double A, double *beta, double *u );
-
-double gg( double t, int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double a );
-double hh( double t, int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double a, double *beta );
-double ii( double t, int j, double *l, double *x1, double *x2, double a, double R, double r_c);
-
 
 //--------------------main--------------------//
 
@@ -72,12 +43,12 @@ int main(void){
 
   //-----------変数----------//
   
-  int i,j,z,N = 128;
-  double t,dt = 0.1 / ( N * N );
+  int i,j,z,N = 512;
+  double t,dt = 0.001 / ( N * N );
   double *X1,*X2;
   double *T1,*T2;
   double *N1,*N2;
-  double *kappa;
+  double *kappa,*kappa_s,*kappa_ss;
   X1 = make_vector(Z + 2);
   X2 = make_vector(Z + 2);
   T1 = make_vector(Z + 2);
@@ -85,6 +56,8 @@ int main(void){
   N1 = make_vector(Z + 2);
   N2 = make_vector(Z + 2);
   kappa = make_vector(Z + 2);
+  kappa_s = make_vector(Z + 2);
+  kappa_ss = make_vector(Z + 2);
 
   double *a0,*a1,*a2,*a3,*a4,*a5;
   double *b0,*b1,*b2,*b3,*b4,*b5;
@@ -136,13 +109,11 @@ int main(void){
   while( t < TMAX ){
     
     runge_qutta(t,dt,N,X1,X2);
-
     
     measure(t,N,X1,X2,&L,&A);
     
     printf("L = %f, L_tmp = %f\n", L,L_tmp);
     /*
-
     if( L > 2 * L_tmp ){
       
       for( i = 1; i <= N; i++ ){
@@ -207,9 +178,9 @@ int main(void){
     z++;
     t = z * dt;
     
-    if( z % 1000 == 0 ){
+    if( z % 1000000 == 0 ){
       
-      sprintf(file, "./data/yoko_kuro%06d.dat", z / 1000 );
+      sprintf(file, "./data/yoko_kuro%06d.dat", z / 1000000 );
       fp = fopen(file, "w");
 
       measure(t,N,X1,X2,&L,&A);
@@ -381,8 +352,6 @@ void runge_qutta( double t, double dt, int N, double *X1, double *X2 ){
   }
   connect_double(N,x_temp1,x_temp2);
 
-  t_temp = t + dt / 2.0;
-
   F(t_temp,N,x_temp1,x_temp2,F1,F2);
   
   for(i = 1; i <= N; i++){
@@ -468,47 +437,41 @@ void ODE_pre( double t, int N, double *x1, double *x2, double *T1, double *T2, d
   double *t1,*t2,*n1,*n2;
   double *nu;
   double *phi;
-  double *kappa;
+  double *kappa,*kappa_s,*kappa_ss;
   double L,A;
-  double *beta,*u;
   
   l = make_vector(Z + 2);
   nu = make_vector(Z + 2);
   phi = make_vector(Z + 2);
   kappa = make_vector(Z + 2);
-
+  kappa_s = make_vector(Z + 2);
+  kappa_ss = make_vector(Z + 2);
+  
   t1 = make_vector(Z + 2);
   t2 = make_vector(Z + 2);
   n1 = make_vector(Z + 2);
   n2 = make_vector(Z + 2);
-
-  beta = make_vector(Z + 2);
-  u = make_vector(Z + 2);
   
   // T,N
-  quantities(t,N,x1,x2,l,t1,t2,n1,n2,T1,T2,N1,N2,nu,phi,kappa);
+  quantities(t,N,x1,x2,l,t1,t2,n1,n2,T1,T2,N1,N2,nu,phi,kappa,kappa_s,kappa_ss);
   
   // L,A
   measure(t,N,x1,x2,&L,&A);
-
-  // beta, u
-  supersaturation(t,N,x1,x2,l,t1,t2,n1,n2,nu,A,beta,u);
   
   // V,W
-  velocity(t,N,x1,x2,t1,t2,n1,n2,l,nu,phi,kappa,L,A,beta,u,V,W);
+  velocity(t,N,x1,x2,n1,n2,l,nu,phi,kappa,kappa_s,kappa_ss,L,A,V,W);
   
   free(t1);
   free(t2);
   free(n1);
   free(n2);
-  
+
+  free(kappa_ss);
+  free(kappa_s);
   free(kappa);
   free(nu);
   free(phi);
   free(l);
-
-  free(beta);
-  free(u);
   
 }
 
@@ -534,7 +497,6 @@ void initial_condition( int N, double *x1, double *x2 ){
   }
   connect_double(N,x1,x2);
   */
-
   
   for(i = 1; i <= N; i++){
     
@@ -546,24 +508,10 @@ void initial_condition( int N, double *x1, double *x2 ){
   }
   connect_double(N,x1,x2);
   
-
-  /*
-  for( i = 1; i <= N; i++ ){
-        
-    u = i * 2.0 * M_PI / N;
-    
-    x1[i] = cos(u) / ( 1 + 0.1 * ( fabs(cos(3 * u + M_PI / 2.0)) - 0.5 ) );
-    
-    x2[i] = sin(u) / ( 1 + 0.1 * ( fabs(cos(3 * u + M_PI / 2.0)) - 0.5 ) );
-
-  }
-  connect_double(N,x1,x2);
-  */
-  
 }
 
 // x --> t,n,T,N,phi,kappa
-void quantities( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa ){
+void quantities( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa, double *kappa_s, double *kappa_ss ){
   
   int i;
   double D,I;
@@ -604,8 +552,6 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
     RANGE_CHECK(I,-1.0,1.0);
     
     nu[i + 1] = nu[i] + D * acos(I);
-
-    //    printf("%f\n",nu[i]);
     
     if( D >= 0.0 ){
       
@@ -623,14 +569,6 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
   }
   connect(N,phi);
   nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
-
-  /*
-  for( i = 1; i <= N; i++ ){
-
-    printf("%d %f\n", i, nu[i]);
-    
-  }
-  */
   
   for( i = 1; i <= N; i++ ){
     
@@ -646,6 +584,20 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
   connect_double(N,T1,T2);
   connect_double(N,N1,N2);
   connect(N,kappa);
+
+  for( i = 1; i <= N; i++ ){
+
+    kappa_s[i] = ( ( ( kappa[i + 1] + kappa[i] ) / ( 2.0 * cos(phi[i] / 2.0) * cos(phi[i] / 2.0) ) ) - ( ( kappa[i] + kappa[i - 1] ) / ( 2.0 * cos(phi[i - 1] / 2.0) * cos(phi[i - 1] / 2.0) ) ) ) / l[i];
+    
+  }
+  connect(N,kappa_s);
+
+  for( i = 1; i <= N; i++ ){
+
+    kappa_ss[i] = ( kappa_s[i + 1] - kappa_s[i - 1] ) / ( 2 * l[i] );
+    
+  }
+  connect(N,kappa_ss);
   
 }
 
@@ -665,6 +617,86 @@ void measure( double t, int N, double *x1, double *x2, double *L, double *A ){
   }
   
   *A = *A / 2.0;
+  
+}
+
+// 増やす
+void increase( double t, int N, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *kappa, double L, double A, double L_tmp, double dt ){
+
+  int i;
+  double *a0,*a1,*a2,*a3,*a4,*a5;
+  double *b0,*b1,*b2,*b3,*b4,*b5;
+  
+  a0 = make_vector(Z + 2);
+  a1 = make_vector(Z + 2);
+  a2 = make_vector(Z + 2);
+  a3 = make_vector(Z + 2);
+  a4 = make_vector(Z + 2);
+  a5 = make_vector(Z + 2);
+  b0 = make_vector(Z + 2);
+  b1 = make_vector(Z + 2);
+  b2 = make_vector(Z + 2);
+  b3 = make_vector(Z + 2);
+  b4 = make_vector(Z + 2);
+  b5 = make_vector(Z + 2);
+  
+  printf("abc\n");
+  
+  for( i = 1; i <= N; i++ ){
+      
+    a0[i] = x1[i - 1];
+    b0[i] = x2[i - 1];
+    a1[i] = T1[i - 1];
+    b1[i] = T2[i - 1];
+    a2[i] = -kappa[i - 1] * N1[i - 1] / 2.0;
+    b2[i] = -kappa[i - 1] * N2[i - 1] / 2.0;
+    a5[i] = 6 * x1[i] - 6 * x1[i - 1] - 6 * T1[i] + 12 * T1[i - 1] - 11 * kappa[i - 1] * N1[i - 1] / 2.0 - kappa[i] * N1[i] / 2.0;
+    b5[i] = 6 * x2[i] - 6 * x2[i - 1] - 6 * T2[i] + 12 * T2[i - 1] - 11 * kappa[i - 1] * N2[i - 1] / 2.0 - kappa[i] * N2[i] / 2.0;
+    a4[i] = -2 * a5[i] - 3 * x1[i] + 3 * x1[i - 1] + T1[i] - 4 * T1[i - 1] + 5 * kappa[i - 1] * N1[i - 1];
+    b4[i] = -2 * b5[i] - 3 * x2[i] + 3 * x2[i - 1] + T2[i] - 4 * T2[i - 1] + 5 * kappa[i - 1] * N2[i - 1];
+    a3[i] = -a4[i] - a5[i] + x1[i] - x1[i - 1] + T1[i - 1] - kappa[i - 1] * N1[i - 1] / 2.0;
+    b3[i] = -b4[i] - b5[i] + x2[i] - x2[i - 1] + T2[i - 1] - kappa[i - 1] * N2[i - 1] / 2.0;
+    
+  }
+  connect_double(N,a0,b0);
+  connect_double(N,a1,b1);
+  connect_double(N,a2,b2);
+  connect_double(N,a3,b3);
+  connect_double(N,a4,b4);
+  connect_double(N,a5,b5);
+  
+  N = N * 2;
+  
+  dt = 0.1 / ( N * N ); 
+  
+  for( i = N; i <= 2; i-- ){
+    
+    x1[i] = x1[i / 2];
+    x2[i] = x2[i / 2];
+    
+  }
+  
+  for( i = 1; i <= N; i += 2 ){
+    
+    x1[i] = a0[i] + a1[i] / 2.0 + a2[i] / 4.0 + a3[i] / 8.0 + a4[i] / 16.0 + a5[i] / 32.0;
+    x2[i] = b0[i] + b1[i] / 2.0 + b2[i] / 4.0 + b3[i] / 8.0 + b4[i] / 16.0 + b5[i] / 32.0;
+    
+  }
+  connect_double(N,x1,x2);
+  
+
+  free(a0);
+  free(a1);
+  free(a2);
+  free(a3);
+  free(a4);
+  free(a5);
+  free(b0);
+  free(b1);
+  free(b2);
+  free(b3);
+  free(b4);
+  free(b5);
   
 }
 
@@ -689,44 +721,34 @@ double omega( int n ){
 }
 
 // x,n,l,t,phi,kappa,L --> V,W
-void velocity( double t, int N, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double *l, double *nu, double *phi, double *kappa, double L, double A, double *beta, double *u, double *V, double *W ){
+void velocity( double t, int N, double *x1, double *x2, double *n1, double *n2, double *l, double *nu, double *phi, double *kappa, double *kappa_s, double *kappa_ss, double L, double A, double *V, double *W ){
   
   int i;
-
   double *v;
-
+  
   v = make_vector(Z + 2);
   
-  normal_speed(t,N,kappa,phi,beta,u,v,V);
+  normal_speed(t,N,nu,kappa,kappa_s,kappa_ss,phi,v,V);
   tangent_speed(t,N,l,phi,kappa,v,V,L,W);
-
+  
   free(v);
   
 }
 
 // n,phi --> v,V
-void normal_speed( double t, int N, double *kappa, double *phi, double *beta, double *u, double *v, double *V )
+void normal_speed( double t, int N, double *nu, double *kappa, double *kappa_s, double *kappa_ss, double *phi, double *v, double *V )
 {
   int i;
+  double eta;
 
   for( i = 1; i <= N; i++ ){
+
+    eta = 2 * M_PI * i / N;
     
-    v[i] = beta[i] * u[i];
+    v[i] = ( kappa[i] + alpha * kappa[i] * kappa[i] - beta * kappa[i] * kappa[i] * kappa[i] + kappa_ss[i] ) * ( 1 + eps * cos(6 * eta) );
 
   }
   connect(N,v);
-
-  /*
-  for( i = 1; i <= N; i++ ){
-
-    printf("%d %f %f\n", i, beta[i], u[i]);
-    
-  }
-  */
-  
-  //printf("%.30f %.30f\n", beta[1], u[1]);
-  //printf("%.30f %.30f\n", beta[2], u[2]);
-  //printf("%.30f %.30f\n", beta[3], u[3]);
   
   for( i = 1; i <= N; i++ ){
     
@@ -793,257 +815,4 @@ void tangent_speed( double t, int N, double *l, double *phi, double *kappa, doub
   free(PSI);
   free(psi);
   
-}
-
-// 過飽和度
-void supersaturation( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *nu, double A, double *beta, double *u ){
-
-  int i,j,k,ep;
-  double z1, z2;
-  double gamma, tmp, amax;
-  double dx_sim; // 数値積分の分割幅
-  double dx_pi; // 数値積分の分割幅
-  double r_c;
-  double R;
-
-  double **U,*q;
-
-
-  U= make_matrix(Z + 2,Z + 2);
-  q = make_vector(Z + 2);
-  
-
-  r_c = sqrt(A / M_PI);
-  
-  R = 6.5 * r_c;
-
-  
-  if( t == 0.0 ){
-    
-    for( i = 1; i <= N; i++ ){
-      
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( -M_PI / 3.0 ) || nu[i] == ( -2 * M_PI / 3.0 ) ){
-	
-	beta[i] = ( 1 - delta_beta ) * beta_max;
-	
-      }
-      
-      else{
-	
-	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
-	
-      }
-      
-    }
-    
-  }
-  
-  else{
-    
-    for( i = 1; i <= N; i++ ){
-      
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( -M_PI / 3.0 ) || nu[i] == ( -2 * M_PI / 3.0 ) ){
-	
-	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
-       
-      }
-      
-      else{
-	
-	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
-	
-      }
-      
-    }
-    
-  }
-  connect(N,beta);
-  
-    
-    for( i = 1; i <= N; i++ ){
-      
-      for( j = 1; j <= N; j++ ){
-	
-	if( j == i ){
-	  
-	U[i][j] = 0.5 - ( ( k_B * T * beta[i] ) / ( 2 * M_PI * v_c * p_e * E ) ) * l[i] * ( 1 - log(l[i] / 2.0) );
-	
-      }
-
-      else{
-	
-	//----------数値積分----------//
-	
-	dx_sim = l[i] / N;
-	
-	U[i][j] = dx_sim * ( gg(t,i,j,l,x1,x2,t1,t2,n1,n2,0) + gg(t,i,j,l,x1,x2,t1,t2,n1,n2,dx_sim) ) / 2.0;
-	
-	for( k = 1; k < N; k++ ){
-	  
-	  z1 = k * dx_sim;
-	  z2 = ( k + 1 ) * dx_sim;
-	  
-	  U[i][j] = U[i][j] + dx_sim * ( gg(t,i,j,l,x1,x2,t1,t2,n1,n2,z1) + gg(t,i,j,l,x1,x2,t1,t2,n1,n2,z2) ) / 2.0;
-	  
-	}
-	
-	U[i][j] = U[i][j] + dx_sim * ( hh(t,i,j,l,x1,x2,t1,t2,0,beta) + hh(t,i,j,l,x1,x2,t1,t2,dx_sim,beta) ) / 2.0;
-	
-	for( k = 1; k < N; k++ ){
-	  
-	  z1 = k * dx_sim;
-	  z2 = ( k + 1 ) * dx_sim;
-	  
-	  U[i][j] = U[i][j] + dx_sim * ( hh(t,i,j,l,x1,x2,t1,t2,z1,beta) + hh(t,i,j,l,x1,x2,t1,t2,z2,beta) ) / 2.0;
-	  
-	}
-	
-      }
-      
-    }
-    
-  }
-
-  
-  for( j = 1; j <= N; j++ ){
-    
-      dx_pi = 2 * M_PI / N;
-      
-      q[j] = dx_pi * ( ii(t,j,l,x1,x2,0,R,r_c) + ii(t,j,l,x1,x2,dx_pi,R,r_c) ) / 2.0;
-      
-      for( k = 1; k < N; k++ ){
-	
-	z1 = k * dx_pi;
-	z2 = ( k + 1 ) * dx_pi;
-	
-	q[j] = q[j] + dx_pi * ( ii(t,j,l,x1,x2,z1,R,r_c) + ii(t,j,l,x1,x2,z2,R,r_c) ) / 2.0;
-	
-      }
-      
-  }
-  
-  
-  
-  for( i = 1; i <= N; i++ ){
-
-    q[i] = -2 * sigma_infty;
-    
-  }
-  
-  
-
-  //----------ガウスの消去法----------//
-  
-  //----------消去----------//
-  
-  for( k = 1; k <= N - 1; k++ ){
-    
-    amax = fabs(U[k][k]);
-    ep = k;
-    
-    for( i = k + 1; i <= N; i++ ){
-      
-      if( fabs(U[i][k]) > amax ){
-	
-	amax = fabs(U[i][k]);
-	ep = i;
-	
-      }
-      
-    }
-    
-    if( amax < eps_sim ){
-      
-      printf("入力した行列は正則ではない\n");
-      
-    }
-    
-    if( ep != k ){
-      
-      for( j = k; j <= N; j++ ){
-	
-	tmp = U[k][j];
-	U[k][j] = U[ep][j];
-	U[ep][j] = tmp;
-	
-      }
-      
-      tmp = q[k];
-      q[k] = q[ep];
-      q[ep] = tmp;
-      
-    }
-    
-    for( i = k + 1; i <= N; i++ ){
-      
-      gamma = - U[i][k] / U[k][k];
-      
-      for( j = k + 1; j <= N; j++ ){
-	
-	U[i][j] = U[i][j] + gamma * U[k][j];
-	
-      }
-      
-      q[i] = q[i] + gamma * q[k];
-      
-    }
-    
-  }
-  
-  u[N] = q[N] / U[N][N];
-  
-  for( k = N - 1; k >= 1; k-- ){
-    
-    tmp = q[k];
-    
-    for( j = k + 1; j <= N; j++ ){
-      
-      tmp = tmp - U[k][j] * u[j];
-      
-    }
-    
-    u[k] = tmp / U[k][k];
-    
-  }
-  connect(N,u);
-
-  free(q);
-  for( i = 0; i <= Z; i++ ){
-    
-    free((void *)U[i]);
-    
-  }
-  free((void *)U);
-  
-}
-
-double gg( double t, int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double a ){
-
-  return (
-
-	  ( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * n1[i] + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * n2[i] ) / ( 2 * M_PI * ( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl ) )
-	  
-	  );
-
-}
-
-double hh( double t, int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double a, double *beta ){
-
-  return (
-
-	  ( ( k_B * T * beta[i] ) / ( 2 * M_PI * E * p_e * v_c ) ) * log( ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) * ( x1[j - 1] - ( x1[i - 1] - a * t1[i] ) ) + ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) * ( x2[j - 1] - ( x2[i - 1] - a * t2[i] ) ) + epsl * epsl )
-	  
-	  );
-
-}
-
-double ii( double t, int j, double *l, double *x1, double *x2, double a, double R, double r_c){
-
-  return (
-
-	  ( -( log( sqrt( ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) ) + epsl * epsl ) / ( 2 * M_PI * R * log(R / r_c) ) )
-	    + ( ( x1[j - 1] * cos(a) + x2[j - 1] * sin(a) - R ) / ( 2 * M_PI * ( x1[j - 1] - R * cos(a) ) * ( x1[j - 1] - R * cos(a) ) + ( x2[j - 1] - R * sin(a) ) * ( x2[j - 1] - R * sin(a) ) + epsl * epsl ) ) ) * R * sigma_infty
-	  
-	  );
-
 }
