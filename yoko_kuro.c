@@ -29,7 +29,7 @@
 #define sigma_star ( 9.5 * f_0 * energy / ( k_B * T * x_s ) )
 
 //#define sigma_infty ( 17 ) // 初期値
-#define sigma_infty ( 50.0 ) // 初期値
+#define sigma_infty ( 3.5 ) // 初期値
 #define delta_beta ( 0.4 )
 
 
@@ -102,7 +102,7 @@ int main(void){
   b4 = make_vector(Z + 2);
   b5 = make_vector(Z + 2);
   
-  double L,A,L_tmp = 2 * M_PI;
+  double L,A,L_tmp = 2 * M_PI * 5.0e-3;
 
   char file[5000];
   FILE *fp;
@@ -540,8 +540,8 @@ void initial_condition( int N, double *x1, double *x2 ){
     
     u = i * 2.0 * M_PI / N;
     
-    x1[i] = cos(u);
-    x2[i] = sin(u);
+    x1[i] = 5.0e-3 * cos(u);
+    x2[i] = 5.0e-3 * sin(u);
 
   }
   connect_double(N,x1,x2);
@@ -583,7 +583,7 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
   connect_double(N,t1,t2);
   connect_double(N,n1,n2);
   
-
+  /*
   if( t2[1] >= 0 ){
   
     nu[1] = acos(t1[1]);
@@ -595,6 +595,7 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
     nu[1] = -acos(t1[1]);
     
   }
+  */
   
   for( i = 1; i <= N; i++ ){
     
@@ -603,10 +604,9 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
     
     RANGE_CHECK(I,-1.0,1.0);
     
-    nu[i + 1] = nu[i] + D * acos(I);
+    //nu[i + 1] = nu[i] + D * acos(I);
 
-    //    printf("%f\n",nu[i]);
-    
+    /*
     if( D >= 0.0 ){
       
       phi[i] = acos(I);
@@ -620,17 +620,47 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
     }
     
     
-  }
-  connect(N,phi);
-  nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
+    }
+    connect(N,phi);
+    
 
-  /*
-  for( i = 1; i <= N; i++ ){
+    for( i = 1; i <= N; i++ ){
+    
+    nu[i + 1] = phi[i] + nu[i];
+    
+    }
+    nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
+    */
 
-    printf("%d %f\n", i, nu[i]);
+    if( t2[1] < 0 ){
+    
+    nu[1] = -acos(t1[1]);
     
   }
-  */
+  
+  else{
+    
+    nu[1] = acos(t1[1]);
+    
+  }
+  
+  for( i = 1; i <= N; i++ ){
+    
+    nu[i + 1] = nu[i] + D * acos(I);
+    
+  }
+  
+  nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
+
+  }
+
+  for( i = 1; i <= N; i++ ){
+    
+    phi[i] = nu[i + 1] - nu[i];
+    
+  }
+  connect(N,phi);
+  
   
   for( i = 1; i <= N; i++ ){
     
@@ -696,6 +726,12 @@ void velocity( double t, int N, double *x1, double *x2, double *t1, double *t2, 
   double *v;
 
   v = make_vector(Z + 2);
+
+  for( i = 1; i <= N; i++ ){
+    
+    //    printf("%.30f %.30f %.30f\n", nu[i], beta[i], u[i]);
+    
+  }
   
   normal_speed(t,N,kappa,phi,beta,u,v,V);
   tangent_speed(t,N,l,phi,kappa,v,V,L,W);
@@ -715,18 +751,19 @@ void normal_speed( double t, int N, double *kappa, double *phi, double *beta, do
 
   }
   connect(N,v);
+  
 
   /*
-  for( i = 1; i <= N; i++ ){
-
-    printf("%d %f %f\n", i, beta[i], u[i]);
-    
-  }
+  printf("%.30f %.30f\n", beta[0], u[0]);
+  printf("%.30f %.30f\n", beta[1], u[1]);
+  printf("%.30f %.30f\n", beta[2], u[2]);
+  printf("%.30f %.30f\n", beta[3], u[3]);
   */
   
-  //printf("%.30f %.30f\n", beta[1], u[1]);
-  //printf("%.30f %.30f\n", beta[2], u[2]);
-  //printf("%.30f %.30f\n", beta[3], u[3]);
+  //printf("0 %.30f\n", v[0]);
+  //printf("1 %.30f\n", v[1]);
+  //printf("2 %.30f\n", v[2]);
+  //printf("3 %.30f\n", v[3]);
   
   for( i = 1; i <= N; i++ ){
     
@@ -822,7 +859,9 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
     
     for( i = 1; i <= N; i++ ){
       
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( -M_PI / 3.0 ) || nu[i] == ( -2 * M_PI / 3.0 ) ){
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) ){
+
+	printf("a\n");
 	
 	beta[i] = ( 1 - delta_beta ) * beta_max;
 	
@@ -842,11 +881,13 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
     
     for( i = 1; i <= N; i++ ){
       
-      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( -M_PI / 3.0 ) || nu[i] == ( -2 * M_PI / 3.0 ) ){
+      if( nu[i] == 0 || nu[i] == ( M_PI / 3.0 ) || nu[i] == ( 2 * M_PI / 3.0 ) || nu[i] == M_PI || nu[i] == ( 4 * M_PI / 3.0 ) || nu[i] == ( 5 * M_PI / 3.0 ) ){
+
+	printf("a\n");
 	
-	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
-       
-      }
+      beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+      
+    }
       
       else{
 	
@@ -923,10 +964,9 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
   }
   
   
-  
   for( i = 1; i <= N; i++ ){
 
-    q[i] = -2 * sigma_infty;
+    //q[i] = -2 * sigma_infty;
     
   }
   
@@ -1006,6 +1046,15 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
     
   }
   connect(N,u);
+
+  /*
+  for( i = 0; i <= N + 1; i++ ){
+    
+    printf("%d %f %f\n", i, beta[i], u[i]);
+    
+  }
+  */
+  
 
   free(q);
   for( i = 0; i <= Z; i++ ){
