@@ -142,7 +142,6 @@ int main(void){
     
     printf("L = %f, L_tmp = %f\n", L,L_tmp);
     /*
-
     if( L > 2 * L_tmp ){
       
       for( i = 1; i <= N; i++ ){
@@ -171,29 +170,22 @@ int main(void){
       N = N * 2;
       
       dt = 0.1 / ( N * N );
-
       // ここが入らない
       for( i = N; i >= 2; i-=2 ){
 	
 	X1[i] = X1[i / 2];
 	X2[i] = X2[i / 2];
-
 	printf("babb\n");
-
 	printf("%f %f %d\n",X1[i],X2[i],i);
 	
       }
-
       j = 0;
-
       // ここが 1 --> 1 3 --> 2 5 --> 3
       for( i = 1; i <= N; i += 2 ){
-
 	j += 1;
 	
 	X1[i] = a0[j] + a1[j] / 2.0 + a2[j] / 4.0 + a3[j] / 8.0 + a4[j] / 16.0 + a5[j] / 32.0;
 	X2[i] = b0[j] + b1[j] / 2.0 + b2[j] / 4.0 + b3[j] / 8.0 + b4[j] / 16.0 + b5[j] / 32.0;
-
 	printf("%f %f %d\n",X1[i],X2[i],i);
 	
       }
@@ -530,19 +522,18 @@ void initial_condition( int N, double *x1, double *x2 ){
     
     x1[i] = 2.0 * 0.5 * a1;
     x2[i] = 2.0 * 0.54 * a3;
-
   }
   connect_double(N,x1,x2);
   */
 
   
-  for(i = 1; i <= N; i++){
+  for( i = 1; i <= N; i++ ){
     
-    u = i * 2.0 * M_PI / N;
+    u = i * 2 * M_PI / N;
     
     x1[i] = 5.0e-3 * cos(u);
     x2[i] = 5.0e-3 * sin(u);
-
+    
   }
   connect_double(N,x1,x2);
   
@@ -555,7 +546,6 @@ void initial_condition( int N, double *x1, double *x2 ){
     x1[i] = cos(u) / ( 1 + 0.1 * ( fabs(cos(3 * u + M_PI / 2.0)) - 0.5 ) );
     
     x2[i] = sin(u) / ( 1 + 0.1 * ( fabs(cos(3 * u + M_PI / 2.0)) - 0.5 ) );
-
   }
   connect_double(N,x1,x2);
   */
@@ -566,7 +556,9 @@ void initial_condition( int N, double *x1, double *x2 ){
 void quantities( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa ){
   
   int i;
-  double D,I;
+  double *D_sgn,D,I;
+
+  D_sgn = make_vector(Z + 2);
   
   for(i = 1; i <= N; i++){
     
@@ -583,19 +575,18 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
   connect_double(N,t1,t2);
   connect_double(N,n1,n2);
   
-  /*
-  if( t2[1] >= 0 ){
   
+  if( t2[1] >= 0 ){
+    
     nu[1] = acos(t1[1]);
     
   }
-
+  
   else{
-
+    
     nu[1] = -acos(t1[1]);
     
   }
-  */
   
   for( i = 1; i <= N; i++ ){
     
@@ -603,56 +594,39 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
     I = ip(t1[i],t2[i],t1[i+1],t2[i+1]);
     
     RANGE_CHECK(I,-1.0,1.0);
-    
-    //nu[i + 1] = nu[i] + D * acos(I);
 
-    /*
-    if( D >= 0.0 ){
+   if( D < 0 ){
       
-      phi[i] = acos(I);
+      D_sgn[i] = -1;
       
     }
-
+    
+    else if( D > 0 ){
+      
+      D_sgn[i] = 1;
+      
+    }
+   
     else{
       
-      phi[i] = -acos(I);
-
+      D_sgn[i] = 0;
+      
     }
     
-    
-    }
-    connect(N,phi);
-    
-
-    for( i = 1; i <= N; i++ ){
-    
-    nu[i + 1] = phi[i] + nu[i];
-    
-    }
-    nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
-    */
-
-    if( t2[1] < 0 ){
-    
-    nu[1] = -acos(t1[1]);
-    
-  }
-  
-  else{
-    
-    nu[1] = acos(t1[1]);
-    
-  }
-  
-  for( i = 1; i <= N; i++ ){
-    
-    nu[i + 1] = nu[i] + D * acos(I);
+    nu[i + 1] = nu[i] + D_sgn[i] * acos(I);
     
   }
   
   nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
 
+
+  /*
+  for( i = 1; i <= N; i++ ){
+    
+    printf("%d %f\n", i, nu[i]);
+    
   }
+  */
 
   for( i = 1; i <= N; i++ ){
     
@@ -676,6 +650,8 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
   connect_double(N,T1,T2);
   connect_double(N,N1,N2);
   connect(N,kappa);
+
+  free(D_sgn);
   
 }
 
