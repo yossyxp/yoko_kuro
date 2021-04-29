@@ -25,7 +25,7 @@
 #define E ( 40.0 ) // 拡散係数[m^2/s]
 #define alpha_1 ( 0.1 ) // 凝縮定数
 
-#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) )
+#define beta_max ( alpha_1 * v_c * p_e / sqrt(2 * M_PI * m * k_B * T) ) // 0.001995
 #define sigma_star ( 9.5 * f_0 * energy / ( k_B * T * x_s ) )
 
 //#define sigma_infty ( 17 ) // 初期値
@@ -41,29 +41,29 @@
 
 //--------------------関数--------------------//
 
-double* make_vector(int n); // 領域の確保
-
-void connect(int N, double *x); // 閉曲線のつなぎ
-void connect_double(int N, double* x, double *y); // つなぎ2個
-double ip(double x1, double x2, double y1, double y2); // 内積
-double DIST(double x1, double x2, double y1, double y2); // |y - x|
-double DET(double x1, double x2, double y1, double y2); // 行列式
-void runge_qutta(double t, double dt, int N, double *X1, double *X2); // ルンゲクッタ
-void F(double t, int N, double *x1, double *x2, double *F1, double *F2);
-void ODE_pre(double t, int N, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *V, double *W); // x --> T,N,V,W
-void initial_condition(int N, double *x1, double *x2); // 初期条件
-void quantities(double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa); //x --> t,n,T,N,phi,kappa
-void measure(double t, int N, double *x1, double *x2, double *L, double *A); // x,l --> L,A
+double* make_vector( int n ); // 領域の確保
+double** make_matrix( int ROW, int COL ); // 領域の確保
+void connect( int N, double *x ); // 閉曲線のつなぎ
+void connect_double( int N, double* x, double *y ); // つなぎ2個
+double ip( double x1, double x2, double y1, double y2 ); // 内積
+double DIST( double x1, double x2, double y1, double y2 ); // |y - x|
+double DET( double x1, double x2, double y1, double y2 ); // 行列式
+void runge_qutta( double t, double dt, int N, double *X1, double *X2 ); // ルンゲクッタ
+void F( double t, int N, double *x1, double *x2, double *F1, double *F2 );
+void ODE_pre( double t, int N, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *V, double *W ); // x --> T,N,V,W
+void initial_condition( int N, double *x1, double *x2 ); // 初期条件
+void quantities( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa ); //x --> t,n,T,N,phi,kappa
+void measure( double t, int N, double *x1, double *x2, double *L, double *A ); // x,l --> L,A
 void increase( double t, int N, double *x1, double *x2, double *T1, double *T2, double *N1, double *N2, double *kappa, double L, double A, double L_tmp, double dt );
-double omega(int n); // 緩和項
-void velocity(double t, int N, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double *l, double *nu, double *phi, double *kappa, double L, double A, double *beta, double *u, double *V, double *W); // x,n,l,t,phi,kappa,L --> V,W
-void normal_speed(double t, int N, double *kappa, double *phi, double *beta, double *u, double *v, double *V); // n,phi --> v,V
-void tangent_speed(double t, int N, double *l, double *phi, double *kappa, double *v, double *V, double L, double *W); // l,phi,kappa,v,V,L --> W
+double omega( int n ); // 緩和項
+void velocity( double t, int N, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double *l, double *nu, double *phi, double *kappa, double L, double A, double *beta, double *u, double *V, double *W ); // x,n,l,t,phi,kappa,L --> V,W
+void normal_speed( double t, int N, double *kappa, double *phi, double *beta, double *u, double *v, double *V ); // n,phi --> v,V
+void tangent_speed( double t, int N, double *l, double *phi, double *kappa, double *v, double *V, double L, double *W ); // l,phi,kappa,v,V,L --> W
 void supersaturation( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *nu, double A, double *beta, double *u );
 
 double gg( double t, int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double *n1, double *n2, double a );
 double hh( double t, int i, int j, double *l, double *x1, double *x2, double *t1, double *t2, double a, double *beta );
-double ii( double t, int j, double *l, double *x1, double *x2, double a, double R, double r_c);
+double ii( double t, int j, double *l, double *x1, double *x2, double a, double R, double r_c );
 
 
 //--------------------main--------------------//
@@ -556,9 +556,7 @@ void initial_condition( int N, double *x1, double *x2 ){
 void quantities( double t, int N, double *x1, double *x2, double *l, double *t1, double *t2, double *n1, double *n2, double *T1, double *T2, double *N1, double *N2, double *nu, double *phi, double *kappa ){
   
   int i;
-  double *D_sgn,D,I;
-
-  D_sgn = make_vector(Z + 2);
+  double D_sgn,D,I;
   
   for(i = 1; i <= N; i++){
     
@@ -574,7 +572,9 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
   connect(N,l);
   connect_double(N,t1,t2);
   connect_double(N,n1,n2);
+
   
+  RANGE_CHECK(t1[1],-1.0,1.0);
   
   if( t2[1] >= 0 ){
     
@@ -597,36 +597,27 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
 
    if( D < 0 ){
       
-      D_sgn[i] = -1;
+      D_sgn = -1;
       
     }
     
     else if( D > 0 ){
       
-      D_sgn[i] = 1;
+      D_sgn = 1;
       
     }
    
     else{
       
-      D_sgn[i] = 0;
+      D_sgn = 0;
       
     }
     
-    nu[i + 1] = nu[i] + D_sgn[i] * acos(I);
+    nu[i + 1] = nu[i] + D_sgn * acos(I);
     
   }
-  
   nu[0] = nu[1] - ( nu[N + 1] - nu[N] );
-
-
-  /*
-  for( i = 1; i <= N; i++ ){
-    
-    printf("%d %f\n", i, nu[i]);
-    
-  }
-  */
+  
 
   for( i = 1; i <= N; i++ ){
     
@@ -644,14 +635,12 @@ void quantities( double t, int N, double *x1, double *x2, double *l, double *t1,
     N1[i] = T2[i];
     N2[i] = -T1[i];
     
-    kappa[i] = ( tan(phi[i]) + tan(phi[i - 1]) ) / l[i];
+    kappa[i] = ( tan(phi[i] / 2.0) + tan(phi[i - 1] / 2.0) ) / l[i];
     
   }
   connect_double(N,T1,T2);
   connect_double(N,N1,N2);
   connect(N,kappa);
-
-  free(D_sgn);
   
 }
 
@@ -674,19 +663,6 @@ void measure( double t, int N, double *x1, double *x2, double *L, double *A ){
   
 }
 
-// h = h(t)
-double height( double t ){
-  
-  return exp(t);
-
-}
-
-double height_t( double t ){
-  
-  return exp(t);
-  
-}
-
 //緩和項
 double omega( int n ){
   
@@ -700,14 +676,14 @@ void velocity( double t, int N, double *x1, double *x2, double *t1, double *t2, 
   int i;
 
   double *v;
-
-  v = make_vector(Z + 2);
-
-  for( i = 1; i <= N; i++ ){
+  /*
+  for( i = 0; i <= N + 1; i++ ){
     
-    //    printf("%.30f %.30f %.30f\n", nu[i], beta[i], u[i]);
+    printf("%d %.30f %.30f\n", i, beta[i], u[i]);
     
   }
+  */
+  v = make_vector(Z + 2);
   
   normal_speed(t,N,kappa,phi,beta,u,v,V);
   tangent_speed(t,N,l,phi,kappa,v,V,L,W);
@@ -721,6 +697,16 @@ void normal_speed( double t, int N, double *kappa, double *phi, double *beta, do
 {
   int i;
 
+  /*
+  for( i = 0; i <= N + 1; i++ ){
+    
+    printf("%d %.30f\n", i, u[i]);
+    
+  }
+  */
+
+  //  u[1] = ( u[0] + u[2] ) / 2.0;
+
   for( i = 1; i <= N; i++ ){
     
     v[i] = beta[i] * u[i];
@@ -728,18 +714,6 @@ void normal_speed( double t, int N, double *kappa, double *phi, double *beta, do
   }
   connect(N,v);
   
-
-  /*
-  printf("%.30f %.30f\n", beta[0], u[0]);
-  printf("%.30f %.30f\n", beta[1], u[1]);
-  printf("%.30f %.30f\n", beta[2], u[2]);
-  printf("%.30f %.30f\n", beta[3], u[3]);
-  */
-  
-  //printf("0 %.30f\n", v[0]);
-  //printf("1 %.30f\n", v[1]);
-  //printf("2 %.30f\n", v[2]);
-  //printf("3 %.30f\n", v[3]);
   
   for( i = 1; i <= N; i++ ){
     
@@ -844,8 +818,10 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
       }
       
       else{
+
+	beta[i] = beta_max * 2 * x_s * tan(3 * nu[i]) * tanh(e / ( 2 * x_s * tan(3 * nu[i]) )) / e;
 	
-	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
+	//beta[i] = beta_max * tan(3 * nu[i]) * tanh(1.0 / ( tan(3 * nu[i]) ));
 	
       }
       
@@ -867,7 +843,9 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
       
       else{
 	
-	beta[i] = beta_max * 2 * x_s * tan(nu[i]) * tanh(e / ( 2 * x_s * tan(nu[i]) )) / e;
+	beta[i] = beta_max * 2 * x_s * tan(3 * nu[i]) * tanh(e / ( 2 * x_s * tan(3 * nu[i]) )) / e;
+	
+	//beta[i] = beta_max * tan(3 * nu[i]) * tanh(1.0 / ( tan(3 * nu[i]) ));
 	
       }
       
@@ -875,8 +853,8 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
     
   }
   connect(N,beta);
+
   
-    
     for( i = 1; i <= N; i++ ){
       
       for( j = 1; j <= N; j++ ){
@@ -893,25 +871,31 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
 	
 	dx_sim = l[i] / N;
 	
-	U[i][j] = dx_sim * ( gg(t,i,j,l,x1,x2,t1,t2,n1,n2,0) + gg(t,i,j,l,x1,x2,t1,t2,n1,n2,dx_sim) ) / 2.0;
+	U[i][j] = dx_sim * ( gg(t,i,j,l,x1,x2,t1,t2,n1,n2,0)
+			     + gg(t,i,j,l,x1,x2,t1,t2,n1,n2,dx_sim) ) / 2.0; // <- 書き換え
 	
 	for( k = 1; k < N; k++ ){
 	  
 	  z1 = k * dx_sim;
 	  z2 = ( k + 1 ) * dx_sim;
 	  
-	  U[i][j] = U[i][j] + dx_sim * ( gg(t,i,j,l,x1,x2,t1,t2,n1,n2,z1) + gg(t,i,j,l,x1,x2,t1,t2,n1,n2,z2) ) / 2.0;
+	  U[i][j] = U[i][j] + dx_sim * ( gg(t,i,j,l,x1,x2,t1,t2,n1,n2,z1)
+				       + gg(t,i,j,l,x1,x2,t1,t2,n1,n2,z2) ) / 2.0;
 	  
 	}
+
+	//--------------------------------------------------//
 	
-	U[i][j] = U[i][j] + dx_sim * ( hh(t,i,j,l,x1,x2,t1,t2,0,beta) + hh(t,i,j,l,x1,x2,t1,t2,dx_sim,beta) ) / 2.0;
+	U[i][j] = U[i][j] + dx_sim * ( hh(t,i,j,l,x1,x2,t1,t2,0,beta)
+				     + hh(t,i,j,l,x1,x2,t1,t2,dx_sim,beta) ) / 2.0;
 	
 	for( k = 1; k < N; k++ ){
 	  
 	  z1 = k * dx_sim;
 	  z2 = ( k + 1 ) * dx_sim;
 	  
-	  U[i][j] = U[i][j] + dx_sim * ( hh(t,i,j,l,x1,x2,t1,t2,z1,beta) + hh(t,i,j,l,x1,x2,t1,t2,z2,beta) ) / 2.0;
+	  U[i][j] = U[i][j] + dx_sim * ( hh(t,i,j,l,x1,x2,t1,t2,z1,beta)
+				       + hh(t,i,j,l,x1,x2,t1,t2,z2,beta) ) / 2.0;
 	  
 	}
 	
@@ -926,26 +910,29 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
     
       dx_pi = 2 * M_PI / N;
       
-      q[j] = dx_pi * ( ii(t,j,l,x1,x2,0,R,r_c) + ii(t,j,l,x1,x2,dx_pi,R,r_c) ) / 2.0;
+      q[j] = dx_pi * ( ii(t,j,l,x1,x2,0,R,r_c)
+		     + ii(t,j,l,x1,x2,dx_pi,R,r_c) ) / 2.0;
       
       for( k = 1; k < N; k++ ){
 	
 	z1 = k * dx_pi;
 	z2 = ( k + 1 ) * dx_pi;
 	
-	q[j] = q[j] + dx_pi * ( ii(t,j,l,x1,x2,z1,R,r_c) + ii(t,j,l,x1,x2,z2,R,r_c) ) / 2.0;
+	q[j] = q[j] + dx_pi * ( ii(t,j,l,x1,x2,z1,R,r_c)
+			      + ii(t,j,l,x1,x2,z2,R,r_c) ) / 2.0;
 	
       }
       
   }
+
   
-  
+  /*
   for( i = 1; i <= N; i++ ){
 
-    //q[i] = -2 * sigma_infty;
+    q[i] = -2 * sigma_infty;
     
   }
-  
+  */
   
 
   //----------ガウスの消去法----------//
@@ -1023,10 +1010,11 @@ void supersaturation( double t, int N, double *x1, double *x2, double *l, double
   }
   connect(N,u);
 
+  
   /*
   for( i = 0; i <= N + 1; i++ ){
     
-    printf("%d %f %f\n", i, beta[i], u[i]);
+    printf("%d %.30f\n", i, u[i]);
     
   }
   */
