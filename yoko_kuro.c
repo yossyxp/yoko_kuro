@@ -5,10 +5,11 @@
 
 //--------------------定数--------------------//
 
-#define NUM ( 240 )
-#define TMAX ( 600.0 )
-#define J ( 50 )
-#define dt ( 0.1 / ( NUM * NUM ) ) // 0.000006
+#define NUM ( 120 )
+#define TMAX ( 3000.0 )
+#define J ( 10 )
+//#define dt ( 0.1 / ( NUM * NUM ) ) // 0.000006
+#define dt ( 1.0e-4 ) // 0.000006
 #define RANGE_CHECK(x, xmin, xmax) ( x = ( x < xmin ? xmin : ( x < xmax ?  x : xmax)));
 
 //----------定数(結晶)----------//
@@ -31,7 +32,7 @@
 
 //#define sigma_infty ( 17 ) // 初期値
 #define sigma_infty ( 0.035 ) // 初期値
-#define delta_beta ( 0.4 )
+#define delta_beta ( 0.12 )
 
 //----------定数(eps)----------//
 
@@ -92,13 +93,16 @@ int main(void){
   double L,A;
 
   char file[5000];
-  FILE *fp;
+  FILE *fp,*fp2;
+  
+  //fp = fopen("mfs.dat", "w");
+  fp2 = fopen("L_A.dat", "w");
   
   t = 0.0;
   z = 0;
 
   initial_condition(X1,X2);
-  
+
   sprintf(file, "./data/yoko_kuro%06d.dat", z);
   fp = fopen(file, "w");
   
@@ -109,6 +113,12 @@ int main(void){
   }
   fprintf(fp,"\n");
   
+  measure(t,X1,X2,&L,&A);
+  
+  fprintf(fp2, "t = %f, L = %f, A = %f\n", t, L, A );
+
+  fclose(fp2);
+
   fclose(fp);
   
   while( t < TMAX ){
@@ -120,22 +130,27 @@ int main(void){
     t = z * dt;
 
     measure(t,X1,X2,&L,&A);
+    printf("t = %f A = %.15f\n", t, A);
     
-    printf("t = %f L = %f\n", t, L);
-    
-    if( z % 1000 == 0 ){
+    if( z % 10000 == 0 ){
       
-      sprintf(file, "./data/yoko_kuro%06d.dat", z / 1000);
+      sprintf(file, "./data/yoko_kuro%06d.dat", z / 10000 );
       fp = fopen(file, "w");
+
+      measure(t,X1,X2,&L,&A);
       
       for( i = 0; i <= NUM; i++ ){
 	
 	fprintf(fp, "%f %f %f\n", X1[i], X2[i], t);
-	
+
       }
       fprintf(fp,"\n");
 
       fclose(fp);
+      fp2 = fopen("L_A.dat", "a");
+
+      fprintf(fp2, "t = %f, L = %f, A = %f\n", t, L, A );
+      fclose(fp2);
 
     }
 
@@ -147,7 +162,6 @@ int main(void){
   return 0;
   
 }
-
 
 //--------------------関数--------------------//
 
@@ -601,35 +615,58 @@ void pre( double t, double *x1, double *x2, double *T1, double *T2, double *N1, 
 // 初期曲線
 void initial_condition( double *x1, double *x2 ){
 
-  int i;
-  double u,z,R;
+  int i, k;
+  double u,lambda;
 
   /*
-  for( i = 1; i <= NUM; i++ ){
-    
-    u = i * 1.0 / NUM;
-    z = 2.0 * M_PI *u;
-    R = 1.0 + 0.02 * (cos(6.0 * M_PI * u) + sin(14.0 * M_PI * u) + cos(30.0 * M_PI * u) + sin(50.0 * M_PI * u) );
-
-    x1[i] = R * cos(z);
-    x2[i] = R * sin(z);
-
+  for (i = 1; i <= NUM; i++)
+  {
+    u = i * 2 * M_PI / NUM;
   }
-  connect_double(x1,x2);
+
+  for (k = 0; k < 6; k++)
+  {
+    for (i = k * (NUM / 6) + 1; i <= (k + 1) * (NUM / 6); i++)
+    {
+      lambda = (i - k * (NUM / 6)) * 1.0 / (NUM / 6);
+      if (k == 0)
+      {
+        x1[i] = (1.0 - lambda) * 1.0 + lambda * 1.0 / 2.0;
+        x2[i] = (1.0 - lambda) * 0.0 + lambda * sqrt(3.0) / 2.0;
+      }
+      else if (k == 1)
+      {
+        x1[i] = (1.0 - lambda) * 1.0 / 2.0 + lambda * (-1.0 / 2.0);
+        x2[i] = sqrt(3.0) / 2.0;
+      }
+      else if (k == 2)
+      {
+        x1[i] = (1.0 - lambda) * (-1.0 / 2.0) + lambda * (-1.0);
+        x2[i] = (1.0 - lambda) * (sqrt(3.0) / 2.0) + lambda * 0.0;
+      }
+      else if (k == 3)
+      {
+        x1[i] = (1.0 - lambda) * (-1.0) + lambda * (-1.0 / 2.0);
+        x2[i] = (1.0 - lambda) * 0.0 + lambda * (-sqrt(3.0) / 2.0);
+      }
+      else if (k == 4)
+      {
+        x1[i] = (1.0 - lambda) * (-1.0 / 2.0) + lambda * (1.0 / 2.0);
+        x2[i] = -sqrt(3.0) / 2.0;
+      }
+      else
+      {
+        x1[i] = (1.0 - lambda) * (1.0 / 2.0) + lambda * (1.0);
+        x2[i] = (1.0 - lambda) * (-sqrt(3.0) / 2.0) + lambda * 0.0;
+      }
+
+      x1[i] = 1.0e-2 * x1[i];
+      x2[i] = 1.0e-2 * x2[i];
+    }
+  }
+  connect_double(x1, x2);
   */
 
-  /*
-  for( i = 1; i <= NUM; i++ ){
-        
-    u = i * 2.0 * M_PI / NUM;
-    
-    x1[i] = 1.0e-2 * cos(u) / ( 1 + 0.1 * ( fabs(cos(3 * u + M_PI / 2.0)) - 0.5 ) );
-    
-    x2[i] = 1.0e-2 * sin(u) / ( 1 + 0.1 * ( fabs(cos(3 * u + M_PI / 2.0)) - 0.5 ) );
-  }
-  connect_double(x1,x2);
-  */
-  
   
   for( i = 1; i <= NUM; i++ ){
     
@@ -657,8 +694,8 @@ void quantities( double t, double *x1, double *x2, double *l, double *t1, double
     t1[i] = ( x1[i] - x1[i - 1] ) / l[i];
     t2[i] = ( x2[i] - x2[i - 1] ) / l[i];
     
-    n1[i] = t2[i];
-    n2[i] = -t1[i];
+    n1[i] = -t2[i];
+    n2[i] = t1[i];
 
   }
   connect(l);
@@ -724,8 +761,8 @@ void quantities( double t, double *x1, double *x2, double *l, double *t1, double
     T1[i] = ( t1[i] + t1[i + 1] ) / ( 2.0 * cos(phi[i] / 2.0) );
     T2[i] = ( t2[i] + t2[i + 1] ) / ( 2.0 * cos(phi[i] / 2.0) );
 
-    N1[i] = T2[i];
-    N2[i] = -T1[i];
+    N1[i] = -T2[i];
+    N2[i] = T1[i];
     
     kappa[i] = ( tan(phi[i] / 2.0) + tan(phi[i - 1] / 2.0) ) / l[i];
     
@@ -781,23 +818,124 @@ void supersaturation( double t, double *x1, double *x2, double *t1, double *t2, 
       
       //beta[i] = beta_max * cos(6 * nu[i]) + beta_max + beta_max;
       //beta[i] = beta_max * 2 * x_s * tan(3 * nu[i]) * tanh(e / ( 2 * x_s * tan(3 * nu[i]) )) / e;
+      beta[i] = beta_max * ( sin(( atan(tan(3*nu[i]-M_PI/2.0)) + M_PI/2.0 ) / 3.0) + sin(M_PI/3.0 - ( atan(tan(3*nu[i]-M_PI/2.0)) + M_PI/2.0 ) / 3.0) ) / sin(M_PI/3.0);
       //beta[i] = beta_max * tan(3 * nu[i]) * tanh(1.0 / tan(3 * nu[i])) + beta_max;
       //beta[i] = ( 1 + 0.1 * ( fabs(cos(3 * nu[i] + M_PI / 2.0)) - 0.5 ) ) * beta_max;
       //beta[i] = beta_max * ( 1 + ( 0.99 / 35.0 ) * cos(6 * nu[i]) );
       //beta[i] = beta_max * cos(4 * ( nu[i] - M_PI / 4.0 )) + beta_max + beta_max;
       //beta[i] = beta_max;
 
-      if( nu[i] == 0.0 || nu[i] == M_PI / 3.0 || nu[i] == 2 * M_PI / 3.0 || nu[i] == M_PI || nu[i] == 4.0 * M_PI / 3.0 || nu[i] == 5.0 * M_PI / 3.0 || nu[i] == 2.0 * M_PI || nu[i] == 7.0 * M_PI / 3.0 || nu[i] == 8.0 * M_PI / 3.0  ){
+      if( nu[i] > -1.0e-5 ){
+	
+	if( nu[i] < 1.0e-5 ){
+	  
+	  printf("a");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
 
-	printf("a\n");
+      if( nu[i] > M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("b");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
 
-	beta[i] = ( 1 - delta_beta ) * beta_max; 
+      if( nu[i] > 2 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 2 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("c");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
 	
       }
       
+      if( nu[i] > M_PI - 1.0e-5 ){
+	
+	if( nu[i] < M_PI + 1.0e-5 ){
+	  
+	  printf("d");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
+
+      if( nu[i] > 4 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 4 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("e");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
+      
+      if( nu[i] > 5 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 5 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("f");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
+      
+      if( nu[i] > 2 * M_PI - 1.0e-5 ){
+	
+	if( nu[i] < 2 * M_PI + 1.0e-5 ){
+	  
+	  printf("g");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
+      
+      if( nu[i] > 7 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 7 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("h");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }
+
+      if( nu[i] > 8 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 8 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("i");
+	  
+	  beta[i] = ( 1 - delta_beta ) * beta_max; 
+	  
+	}
+	
+      }					  
+      
     }
     connect(beta);
-
+    
   }
 
   else{
@@ -807,18 +945,119 @@ void supersaturation( double t, double *x1, double *x2, double *t1, double *t2, 
       //beta[i] = beta_max * cos(6 * nu[i]) + beta_max + beta_max;
       //beta[i] = beta_max * 2 * x_s * tan(3 * nu[i]) * tanh(e / ( 2 * x_s * tan(3 * nu[i]) )) / e;
       //beta[i] = beta_max * tan(3 * nu[i]) * tanh(1.0 / tan(3 * nu[i]));
+      beta[i] = beta_max * ( sin(( atan(tan(3*nu[i]-M_PI/2.0)) + M_PI/2.0 ) / 3.0) + sin(M_PI/3.0 - ( atan(tan(3*nu[i]-M_PI/2.0)) + M_PI/2.0 ) / 3.0) ) / sin(M_PI/3.0);
       //beta[i] = ( 1 + 0.1 * ( fabs(cos(3 * nu[i] + M_PI / 2.0)) - 0.5 ) ) * beta_max;
-      beta[i] = beta_max * ( 1 + ( 0.99 / 35.0 ) * cos(6 * nu[i]) );
+      //beta[i] = beta_max * ( 1 + ( 0.99 / 35.0 ) * cos(6 * nu[i]) );
       //beta[i] = beta_max * cos(4 * ( nu[i] - M_PI / 4.0 )) + beta_max + beta_max;
       //beta[i] = beta_max;
       
-      if( nu[i] == 0.0 || nu[i] == M_PI / 3.0 || nu[i] == 2 * M_PI / 3.0 || nu[i] == M_PI || nu[i] == 4.0 * M_PI / 3.0 || nu[i] == 5.0 * M_PI / 3.0 || nu[i] == 2.0 * M_PI || nu[i] == 7.0 * M_PI / 3.0 || nu[i] == 8.0 * M_PI / 3.0  ){
-
-	printf("a\n");
+      if( nu[i] > -1.0e-5 ){
 	
-	beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	if( nu[i] < 1.0e-5 ){
+	  
+	  printf("a");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
 	
       }
+
+      if( nu[i] > M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("b");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+
+      if( nu[i] > 2 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 2 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("c");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+      
+      if( nu[i] > M_PI - 1.0e-5 ){
+	
+	if( nu[i] < M_PI + 1.0e-5 ){
+	  
+	  printf("d");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+
+      if( nu[i] > 4 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 4 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("e");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+      
+      if( nu[i] > 5 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 5 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("f");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+      
+      if( nu[i] > 2 * M_PI - 1.0e-5 ){
+	
+	if( nu[i] < 2 * M_PI + 1.0e-5 ){
+	  
+	  printf("g");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+      
+      if( nu[i] > 7 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 7 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("h");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }
+
+      if( nu[i] > 8 * M_PI / 3.0 - 1.0e-5 ){
+	
+	if( nu[i] < 8 * M_PI / 3.0 + 1.0e-5 ){
+	  
+	  printf("i");
+	  
+	  beta[i] = beta_max * u[i] * tanh(sigma_star / u[i]) / sigma_star;
+	  
+	}
+	
+      }	
       
     }
     connect(beta);
@@ -831,7 +1070,9 @@ void supersaturation( double t, double *x1, double *x2, double *t1, double *t2, 
       
       //beta[i] = beta_max * cos(6 * nu[i]) + beta_max + beta_max;
       //beta[i] = beta_max * 2 * x_s * tan(3 * nu[i]) * tanh(e / ( 2 * x_s * tan(3 * nu[i]) )) / e;
-      beta[i] = beta_max * tan(3 * nu[i]) * tanh(1.0 / tan(3 * nu[i]));
+      //beta[i] = beta_max * tan(3 * nu[i]) * tanh(1.0 / tan(3 * nu[i]));
+      //beta[i] = beta_max * tan(3 * nu[i]) * tanh(0.2 / tan(3 * nu[i])) / 0.2;
+      beta[i] = beta_max * ( sin(( atan(tan(3*nu[i]-M_PI/2.0)) + M_PI/2.0 ) / 3.0) + sin(M_PI/3.0 - ( atan(tan(3*nu[i]-M_PI/2.0)) + M_PI/2.0 ) / 3.0) ) / sin(M_PI/3.0);
       //beta[i] = ( 1 + 0.1 * ( fabs(cos(3 * nu[i] + M_PI / 2.0)) - 0.5 ) ) * beta_max;
       //beta[i] = beta_max * cos(4 * ( nu[i] - M_PI / 4.0 )) + beta_max + beta_max;
       //beta[i] = beta_max;
@@ -940,13 +1181,13 @@ void supersaturation( double t, double *x1, double *x2, double *t1, double *t2, 
   gauss2(NUM,U,q,u);
   connect(u);
 
-  /*
+  
   for( i = 1; i <= NUM; i++ ){
     
     //printf("u[%d] = %.15f\n", i, u[i]);
-    
+    // 戻せ
   }
-  */
+  
 
   for( i = 0; i <= NUM + 1; i++ ){
     
@@ -1137,7 +1378,7 @@ double ff( double t, int i, int j, double *l, double *x1, double *x2, double *t1
 
   return(
 
-	 -( ( E1(x1_star,x2_star,y1,y2) * n1[j] )
+	 ( ( E1(x1_star,x2_star,y1,y2) * n1[j] )
 	  + ( E2(x1_star,x2_star,y1,y2) * n2[j] ) )
 	 -
 	 ( ( beta / gamma ) * EE(x1_star,x2_star,y1,y2) )
@@ -1170,7 +1411,7 @@ double ii( double t, int i, double *l, double *x1, double *x2, double a, double 
 	  
 	  
 	  (
-	   -( EE(x1_star,x2_star,y1,y2) / log(R / r_c) )	   
+	   ( EE(x1_star,x2_star,y1,y2) / log(R / r_c) )	   
 	   -
 	    ( ( ( E1(x1_star,x2_star,y1,y2) * cos(a) )
 	      + ( E2(x1_star,x2_star,y1,y2) * sin(a) ) ) * R )
