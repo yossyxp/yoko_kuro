@@ -5,11 +5,12 @@
 
 //--------------------定数--------------------//
 
-#define NUM ( 120 )
-#define TMAX ( 3000.0 )
-#define J ( 10 )
+#define NUM ( 240 )
+#define TMAX ( 600.0 )
+#define J ( 30 )
 //#define dt ( 0.1 / ( NUM * NUM ) ) // 0.000006
-#define dt ( 1.0e-4 ) // 0.000006
+//#define dt ( 1.0e-4 ) // 0.000006
+#define dt ( 8.0e-5 ) // 0.000006
 #define RANGE_CHECK(x, xmin, xmax) ( x = ( x < xmin ? xmin : ( x < xmax ?  x : xmax)));
 
 //----------定数(結晶)----------//
@@ -123,8 +124,8 @@ int main(void){
   
   while( t < TMAX ){
     
-    //runge_kutta(t,X1,X2);
-    euler(t,X1,X2);
+    runge_kutta(t,X1,X2);
+    //euler(t,X1,X2);
     
     z++;
     t = z * dt;
@@ -1083,7 +1084,7 @@ void supersaturation( double t, double *x1, double *x2, double *t1, double *t2, 
   
   for( i = 1; i <= NUM; i++ ){
     
-    dx_pi = 2 * M_PI / 100;
+    dx_pi = 2 * M_PI / 100.0;
     
     q[i] = dx_pi * ( ii(t,i,l,x1,x2,0,R,r_c)
 		     + ii(t,i,l,x1,x2,2*M_PI,R,r_c) ) / 2.0;
